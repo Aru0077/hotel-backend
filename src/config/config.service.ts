@@ -1,62 +1,79 @@
-// src/config/config.service.ts
+// src/config/config.service.ts - 增强的配置服务
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { AppConfig } from './config.types';
 
 @Injectable()
 export class AppConfigService {
-  constructor(private configService: ConfigService) {}
+  constructor(private configService: ConfigService<AppConfig, true>) {}
 
   // 应用配置
+  get app() {
+    return this.configService.get('app', { infer: true });
+  }
+
   get port(): number {
-    return this.configService.getOrThrow<number>('PORT');
+    return this.app.port;
   }
 
   get nodeEnv(): string {
-    return this.configService.getOrThrow<string>('NODE_ENV');
+    return this.app.nodeEnv;
+  }
+
+  get isDevelopment(): boolean {
+    return this.app.isDevelopment;
+  }
+
+  get isProduction(): boolean {
+    return this.app.isProduction;
   }
 
   // 数据库配置
+  get database() {
+    return this.configService.get('database', { infer: true });
+  }
+
   get databaseUrl(): string {
-    return this.configService.getOrThrow<string>('DATABASE_URL');
+    return this.database.url;
   }
 
   // Redis配置
+  get redis() {
+    return this.configService.get('redis', { infer: true });
+  }
+
   get redisConfig() {
-    return {
-      host: this.configService.getOrThrow<string>('REDIS_HOST'),
-      port: this.configService.get<number>('REDIS_PORT', 6379),
-      password: this.configService.get<string>('REDIS_PASSWORD', ''),
-      db: this.configService.get<number>('REDIS_DB', 0),
-    };
+    return this.redis;
   }
 
   // JWT配置
+  get jwt() {
+    return this.configService.get('jwt', { infer: true });
+  }
+
   get jwtConfig() {
-    return {
-      secret: this.configService.getOrThrow<string>('JWT_SECRET'),
-      expiresIn: this.configService.get<string>('JWT_EXPIRES_IN', '15m'),
-      refreshSecret:
-        this.configService.getOrThrow<string>('JWT_REFRESH_SECRET'),
-      refreshExpiresIn: this.configService.get<string>(
-        'JWT_REFRESH_EXPIRES_IN',
-        '7d',
-      ),
-    };
+    return this.jwt;
   }
 
   // 跨域配置
+  get cors() {
+    return this.configService.get('cors', { infer: true });
+  }
+
   get allowedOrigins(): string[] {
-    const origins = this.configService.getOrThrow<string>('ALLOWED_ORIGINS');
-    return origins.split(',').map((origin) => origin.trim());
+    return this.cors.allowedOrigins;
   }
 
-  // 使用 get 并提供默认值
+  // 功能配置
+  get features() {
+    return this.configService.get('features', { infer: true });
+  }
+
   get apiTimeout(): number {
-    return this.configService.get<number>('API_TIMEOUT', 5000);
+    return this.features.apiTimeout;
   }
 
-  // 处理可选布尔值
   get enableCache(): boolean {
-    return this.configService.get<boolean>('ENABLE_CACHE', true);
+    return this.features.enableCache;
   }
 }

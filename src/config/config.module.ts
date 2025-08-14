@@ -1,9 +1,10 @@
 // src/config/config.module.ts
-import { Module } from '@nestjs/common';
+import { Global, Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import configuration, { validationSchema } from './configuration';
 import { AppConfigService } from './config.service';
 
+@Global()
 @Module({
   imports: [
     ConfigModule.forRoot({

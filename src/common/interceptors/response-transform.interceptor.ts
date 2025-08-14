@@ -9,7 +9,7 @@ import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
 import { Response } from 'express';
 
-export interface ApiResponse<T> {
+export interface ApiResponse<T = any> {
   success: boolean;
   statusCode: number;
   message: string;
@@ -32,23 +32,10 @@ export class ResponseTransformInterceptor<T = unknown>
       map((data: T) => ({
         success: statusCode < 400,
         statusCode,
-        message: this.getStatusMessage(statusCode),
+        message: '操作成功',
         data,
         timestamp: new Date().toISOString(),
       })),
     );
-  }
-
-  private getStatusMessage(statusCode: number): string {
-    switch (statusCode) {
-      case 200:
-        return '请求成功';
-      case 201:
-        return '创建成功';
-      case 204:
-        return '删除成功';
-      default:
-        return '操作完成';
-    }
   }
 }

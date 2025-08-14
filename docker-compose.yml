@@ -1,0 +1,90 @@
+services:
+  # 数据库迁移服务
+  migrate:
+    image: hotel-service:latest
+    container_name: hotel_migrate
+    environment:
+      DATABASE_URL: "postgresql://hotel:aruhan0077@postgres:5432/hotel?schema=public&connection_limit=20&connect_timeout=60&pool_timeout=20"
+    command: npx prisma migrate deploy
+    networks:
+      - hotel_network
+    depends_on:
+      - postgres
+    restart: "no"
+  # NestJS应用服务
+  hotel-service:
+    image: hotel-service:latest
+    container_name: hotel_nestjs
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      # 应用配置
+      PORT: 3000
+      NODE_ENV: production
+      
+      # 数据库配置（修改为容器服务名）
+      DATABASE_URL: "postgresql://hotel:aruhan0077@postgres:5432/hotel?schema=public&connection_limit=20&connect_timeout=60&pool_timeout=20"
+      
+      # Redis配置（修改为容器服务名）
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ""
+      REDIS_DB: 0
+      
+      # JWT配置
+      JWT_SECRET: "89c50182-6eed-431e-80b9-600b0066847f"
+      JWT_EXPIRES_IN: "15m"
+      JWT_REFRESH_SECRET: "bbf6aedf-8a74-42c1-9a48-4fa379b2893b"
+      JWT_REFRESH_EXPIRES_IN: "7d"
+      
+      # 跨域配置
+      ALLOWED_ORIGINS: "https://admin.yoursite.com,https://merchant.yoursite.com,http://localhost:3000"
+    networks:
+      - hotel_network
+    depends_on:
+      - postgres
+      - redis
+      - migrate
+
+  # PostgreSQL数据库服务
+  postgres:
+    image: postgres:15-alpine
+    container_name: hotel_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: hotel
+      POSTGRES_USER: hotel
+      POSTGRES_PASSWORD: aruhan0077
+      POSTGRES_HOST_AUTH_METHOD: md5
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - hotel_network
+
+  # Redis缓存服务
+  redis:
+    image: redis:7-alpine
+    container_name: hotel_redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - hotel_network
+
+# 数据卷定义
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+
+# 网络定义
+networks:
+  hotel_network:
+    driver: bridge

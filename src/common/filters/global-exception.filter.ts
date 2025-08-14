@@ -10,6 +10,13 @@ import {
 import { Request, Response } from 'express';
 import { AppConfigService } from '../../config/config.service';
 
+interface ErrorResponse {
+  statusCode: number;
+  message: string;
+  timestamp: string;
+  path: string;
+}
+
 @Catch()
 export class GlobalExceptionFilter implements ExceptionFilter {
   private readonly logger = new Logger(GlobalExceptionFilter.name);
@@ -21,62 +28,86 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     const response = ctx.getResponse<Response>();
     const request = ctx.getRequest<Request>();
 
-    let status: number;
-    let message: string;
-    let error: string;
+    const { status, message } = this.getErrorDetails(exception);
 
-    if (exception instanceof HttpException) {
-      status = exception.getStatus();
-      const errorResponse = exception.getResponse();
-
-      if (typeof errorResponse === 'object' && errorResponse !== null) {
-        const errorObj = errorResponse as Record<string, unknown>;
-        message =
-          (typeof errorObj.message === 'string'
-            ? errorObj.message
-            : undefined) || exception.message;
-        error =
-          (typeof errorObj.error === 'string' ? errorObj.error : undefined) ||
-          exception.name;
-      } else {
-        message = String(errorResponse);
-        error = exception.name;
-      }
-    } else if (exception instanceof Error) {
-      status = HttpStatus.INTERNAL_SERVER_ERROR;
-      message = this.configService.isProduction
-        ? '服务器内部错误'
-        : exception.message;
-      error = 'Internal Server Error';
-    } else {
-      status = HttpStatus.INTERNAL_SERVER_ERROR;
-      message = '服务器内部错误';
-      error = 'Internal Server Error';
-    }
-
-    const errorInfo = {
+    const errorResponse: ErrorResponse = {
       statusCode: status,
+      message,
       timestamp: new Date().toISOString(),
       path: request.url,
-      method: request.method,
-      message,
-      error,
     };
 
     // 记录错误日志
-    if (status >= 500) {
-      this.logger.error(
-        `${request.method} ${request.url}`,
-        JSON.stringify(errorInfo),
-        exception instanceof Error ? exception.stack : 'Unknown',
-      );
-    } else {
-      this.logger.warn(
-        `${request.method} ${request.url}`,
-        JSON.stringify(errorInfo),
-      );
+    this.logError(request, errorResponse, exception);
+
+    response.status(status).json(errorResponse);
+  }
+
+  private getErrorDetails(exception: unknown): {
+    status: number;
+    message: string;
+  } {
+    if (exception instanceof HttpException) {
+      return {
+        status: exception.getStatus(),
+        message: this.extractHttpExceptionMessage(exception),
+      };
     }
 
-    response.status(status).json(errorInfo);
+    return {
+      status: HttpStatus.INTERNAL_SERVER_ERROR,
+      message: this.configService.isProduction
+        ? '服务器内部错误'
+        : this.extractErrorMessage(exception),
+    };
+  }
+
+  private extractHttpExceptionMessage(exception: HttpException): string {
+    const response = exception.getResponse();
+
+    if (typeof response === 'string') {
+      return response;
+    }
+
+    if (typeof response === 'object' && response !== null) {
+      if ('message' in response) {
+        const message = (response as Record<string, unknown>).message;
+
+        if (Array.isArray(message)) {
+          return message.join(', ');
+        }
+
+        if (typeof message === 'string') {
+          return message;
+        }
+      }
+    }
+
+    return exception.message;
+  }
+
+  private extractErrorMessage(exception: unknown): string {
+    if (exception instanceof Error) {
+      return exception.message;
+    }
+
+    return '未知错误';
+  }
+
+  private logError(
+    request: Request,
+    errorResponse: ErrorResponse,
+    exception: unknown,
+  ): void {
+    const logMessage = `${request.method} ${request.url} - ${errorResponse.statusCode} - ${errorResponse.message}`;
+
+    if (errorResponse.statusCode >= 500) {
+      this.logger.error(
+        logMessage,
+        exception instanceof Error ? exception.stack : undefined,
+      );
+    } else {
+      this.logger.warn(logMessage);
+    }
   }
 }

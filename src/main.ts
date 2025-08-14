@@ -2,6 +2,10 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { AppConfigService } from './config/config.service';
 import { Logger, ValidationPipe } from '@nestjs/common';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import helmet from 'helmet';
+import compression from 'compression';
+import morgan from 'morgan';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
@@ -11,6 +15,32 @@ async function bootstrap() {
   // 获取配置服务实例
   const configService = app.get(AppConfigService);
   const logger = new Logger('Bootstrap');
+
+  // ============ 第一阶段：安全中间件配置 ============
+  // 1. Helmet安全头配置
+  app.use(
+    helmet({
+      contentSecurityPolicy: configService.isProduction ? undefined : false,
+    }),
+  );
+
+  // 2. 压缩中间件
+  app.use(compression());
+
+  // 3. CORS配置
+  app.enableCors({
+    origin: configService.allowedOrigins,
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  });
+
+  // 4. 请求日志中间件（仅在开发环境使用）
+  if (configService.isDevelopment) {
+    app.use(morgan('combined'));
+  }
+
+  // ============ 第二阶段：全局管道配置 ============
 
   // 1. 全局验证管道
   app.useGlobalPipes(
@@ -28,28 +58,53 @@ async function bootstrap() {
     }),
   );
 
-  // // 2. 全局异常过滤器
-  // app.useGlobalFilters(new HttpExceptionFilter());
+  // ============ 第三阶段：API文档配置 ============
 
-  // // 3. 全局拦截器
-  // app.useGlobalInterceptors(new PrismaErrorInterceptor());
+  if (configService.isDevelopment) {
+    const config = new DocumentBuilder()
+      .setTitle('酒店管理系统 API')
+      .setDescription('酒店管理系统后端API文档')
+      .setVersion('1.0.0')
+      .addBearerAuth(
+        {
+          type: 'http',
+          scheme: 'bearer',
+          bearerFormat: 'JWT',
+          description: '请输入JWT令牌',
+        },
+        'access-token',
+      )
+      .addTag('认证', '用户认证相关接口')
+      .addTag('健康检查', '系统健康状态检查')
+      .build();
 
-  // 4. CORS配置
-  app.enableCors({
-    origin: configService.allowedOrigins,
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-  });
+    const document = SwaggerModule.createDocument(app, config);
+    SwaggerModule.setup('api/docs', app, document, {
+      swaggerOptions: {
+        persistAuthorization: true,
+        tagsSorter: 'alpha',
+        operationsSorter: 'alpha',
+      },
+    });
 
-  // 5. 优雅关闭
+    logger.log(
+      'API文档已启用，访问地址: http://localhost:${configService.port}/api/docs',
+    );
+  }
+
+  // ============ 第四阶段：应用启动 ============
+
+  // 启用优雅关闭
   app.enableShutdownHooks();
 
   // 使用配置服务的端口设置
   await app.listen(configService.port);
 
-  logger.log(
-    `Application is running on: http://localhost:${configService.port}`,
-  );
+  logger.log(`应用程序运行在: http://localhost:${configService.port}`);
+  logger.log(`环境: ${configService.nodeEnv}`);
+
+  if (configService.isDevelopment) {
+    logger.log('开发模式已启用，包含详细日志和API文档');
+  }
 }
 void bootstrap();

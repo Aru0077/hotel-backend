@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { JwtModule } from '@nestjs/jwt';
 
 import { AppConfigModule } from './config/config.module';
 import { AppConfigService } from './config/config.service';
@@ -20,6 +21,18 @@ import { ResponseTransformInterceptor } from './common/interceptors/response-tra
     PrismaModule,
     RedisModule,
     HealthModule,
+
+    // JWT 模块配置
+    JwtModule.registerAsync({
+      inject: [AppConfigService],
+      useFactory: (configService: AppConfigService) => ({
+        secret: configService.jwt.secret,
+        signOptions: {
+          expiresIn: configService.jwt.expiresIn,
+        },
+      }),
+    }),
+
     ThrottlerModule.forRootAsync({
       inject: [AppConfigService],
       useFactory: (configService: AppConfigService) => [

@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { User, AuthCredential, UserRole, RoleStatus } from '@prisma/client';
+import { User, AuthCredential, RoleStatus } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
 export interface CreateUserData {
@@ -16,15 +16,34 @@ export interface CreateUserData {
   additionalData?: Record<string, any>;
 }
 
+export interface CredentialData {
+  hashedPassword?: string;
+  [key: string]: any;
+}
+
+// export interface SafeCredential extends Omit<AuthCredential, 'credentialData'> {
+//   credentialData: CredentialData | null;
+// }
+
 export interface UserWithCredentials extends User {
   credentials: AuthCredential[];
-  roles: (UserRole & {
+  roles: Array<{
+    id: number;
+    userId: number;
+    roleType: string;
+    status: RoleStatus;
+    createdAt: Date;
+    expiresAt: Date | null;
     merchant?: any;
     customer?: any;
     admin?: any;
-  })[];
+  }>;
 }
 
+/**
+ * 用户服务
+ * 负责核心用户管理功能：创建、查询、更新用户信息及认证凭据管理
+ */
 @Injectable()
 export class UsersService {
   private readonly saltRounds = 12;
@@ -84,7 +103,11 @@ export class UsersService {
       await Promise.all(rolePromises);
 
       // 返回完整的用户信息
-      return await this.findUserById(user.id);
+      const createdUser = await this.findUserById(user.id);
+      if (!createdUser) {
+        throw new Error('创建用户后无法查询到用户信息');
+      }
+      return createdUser;
     });
   }
 
@@ -166,14 +189,15 @@ export class UsersService {
     }
 
     // 验证密码
-    const credentialData = credential.credentialData as any;
-    const hashedPassword = credentialData.hashedPassword;
-
-    if (!hashedPassword) {
+    const credentialData = credential.credentialData as CredentialData | null;
+    if (!credentialData?.hashedPassword) {
       return null;
     }
 
-    const isValid = await bcrypt.compare(password, hashedPassword);
+    const isValid = await bcrypt.compare(
+      password,
+      credentialData.hashedPassword,
+    );
     return isValid ? user : null;
   }
 
@@ -213,7 +237,11 @@ export class UsersService {
       throw new NotFoundException('认证凭据不存在');
     }
 
-    const credentialData = credential.credentialData as any;
+    const credentialData = credential.credentialData as CredentialData | null;
+    if (!credentialData?.hashedPassword) {
+      throw new NotFoundException('认证凭据中缺少密码信息');
+    }
+
     const isOldPasswordValid = await bcrypt.compare(
       oldPassword,
       credentialData.hashedPassword,
@@ -225,13 +253,14 @@ export class UsersService {
 
     // 更新密码
     const hashedNewPassword = await bcrypt.hash(newPassword, this.saltRounds);
+    const updatedCredentialData: CredentialData = {
+      ...credentialData,
+      hashedPassword: hashedNewPassword,
+    };
     await this.prisma.authCredential.update({
       where: { id: credential.id },
       data: {
-        credentialData: {
-          ...credentialData,
-          hashedPassword: hashedNewPassword,
-        },
+        credentialData: updatedCredentialData,
         updatedAt: new Date(),
       },
     });
@@ -289,72 +318,16 @@ export class UsersService {
   }
 
   /**
-   * 获取用户的活跃角色
+   * 软删除用户
    */
-  async getUserActiveRoles(userId: number): Promise<string[]> {
-    const roles = await this.prisma.userRole.findMany({
-      where: {
-        userId,
-        status: RoleStatus.ACTIVE,
-      },
-      select: {
-        roleType: true,
-      },
+  async softDeleteUser(userId: number): Promise<boolean> {
+    // 停用所有角色
+    await this.prisma.userRole.updateMany({
+      where: { userId },
+      data: { status: RoleStatus.SUSPENDED },
     });
 
-    return roles.map((role) => role.roleType);
-  }
-
-  /**
-   * 添加用户角色
-   */
-  async addUserRole(userId: number, roleType: string): Promise<UserRole> {
-    // 检查是否已存在该角色
-    const existingRole = await this.prisma.userRole.findUnique({
-      where: {
-        userId_roleType: {
-          userId,
-          roleType,
-        },
-      },
-    });
-
-    if (existingRole) {
-      if (existingRole.status === RoleStatus.ACTIVE) {
-        throw new ConflictException('用户已具有该角色');
-      }
-
-      // 重新激活已存在但未激活的角色
-      return await this.prisma.userRole.update({
-        where: { id: existingRole.id },
-        data: { status: RoleStatus.ACTIVE },
-      });
-    }
-
-    return await this.prisma.userRole.create({
-      data: {
-        userId,
-        roleType,
-        status: RoleStatus.ACTIVE,
-      },
-    });
-  }
-
-  /**
-   * 移除用户角色
-   */
-  async removeUserRole(userId: number, roleType: string): Promise<boolean> {
-    const result = await this.prisma.userRole.updateMany({
-      where: {
-        userId,
-        roleType,
-      },
-      data: {
-        status: RoleStatus.INACTIVE,
-      },
-    });
-
-    return result.count > 0;
+    return true;
   }
 
   /**
@@ -376,38 +349,5 @@ export class UsersService {
     if (existingCredential) {
       throw new ConflictException('该登录方式已被使用');
     }
-  }
-
-  /**
-   * 软删除用户
-   */
-  async softDeleteUser(userId: number): Promise<boolean> {
-    // 停用所有角色
-    await this.prisma.userRole.updateMany({
-      where: { userId },
-      data: { status: RoleStatus.SUSPENDED },
-    });
-
-    // 这里可以添加更多的软删除逻辑
-    return true;
-  }
-
-  /**
-   * 统计方法 - 获取用户总数
-   */
-  async getUserCount(): Promise<number> {
-    return await this.prisma.user.count();
-  }
-
-  /**
-   * 统计方法 - 按角色类型统计用户数
-   */
-  async getUserCountByRole(roleType: string): Promise<number> {
-    return await this.prisma.userRole.count({
-      where: {
-        roleType,
-        status: RoleStatus.ACTIVE,
-      },
-    });
   }
 }

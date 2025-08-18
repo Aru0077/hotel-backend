@@ -1,0 +1,318 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// 核心用户表
+model User {
+  id          Int       @id @default(autoincrement())
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  lastLoginAt DateTime? @map("last_login_at")
+
+  // 关联关系
+  roles       UserRole[]
+  credentials AuthCredential? // 认证凭证  一对一关联
+
+  @@map("users")
+}
+
+// 用户角色表
+model UserRole {
+  id        Int        @id @default(autoincrement())
+  userId    Int        @map("user_id")
+  roleType  String     @map("role_type")
+  status    RoleStatus @default(ACTIVE)
+  createdAt DateTime   @default(now()) @map("created_at")
+  expiresAt DateTime?  @map("expires_at")
+
+  // 关联关系
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  merchant Merchant?
+  customer Customer?
+  admin    Admin?
+
+  @@unique([userId, roleType])
+  @@index([userId])
+  @@index([roleType])
+  @@index([status])
+  @@map("user_roles")
+}
+
+// 认证凭证表 - 重新设计为一对一，包含所有身份标识符
+model AuthCredential {
+  id     Int @id @default(autoincrement())
+  userId Int @unique @map("user_id") // 一对一关联
+
+  // 各种身份标识符 - 至少需要一个
+  username   String? @unique // 用户名
+  email      String? @unique // 邮箱
+  phone      String? @unique // 手机号
+  facebookId String? @unique @map("facebook_id") // Facebook ID
+  googleId   String? @unique @map("google_id") // Google ID
+
+  // 密码相关
+  hashedPassword String? @map("hashed_password") // 加密后的密码
+
+  // 验证状态 - 分别记录各种方式的验证状态
+  isUsernameVerified Boolean @default(false) @map("is_username_verified")
+  isEmailVerified    Boolean @default(false) @map("is_email_verified")
+  isPhoneVerified    Boolean @default(false) @map("is_phone_verified")
+  isFacebookVerified Boolean @default(false) @map("is_facebook_verified")
+  isGoogleVerified   Boolean @default(false) @map("is_google_verified")
+
+  // 最后使用时间 - 分别记录
+  lastUsedUsername DateTime? @map("last_used_username")
+  lastUsedEmail    DateTime? @map("last_used_email")
+  lastUsedPhone    DateTime? @map("last_used_phone")
+  lastUsedFacebook DateTime? @map("last_used_facebook")
+  lastUsedGoogle   DateTime? @map("last_used_google")
+
+  // 额外的认证数据（JSON格式存储其他信息）
+  additionalData Json? @map("additional_data")
+
+  // 时间戳
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // 关联关系
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // 索引优化
+  @@index([email]) // 邮箱查询优化
+  @@index([phone]) // 手机号查询优化
+  @@index([username]) // 用户名查询优化
+  @@index([facebookId]) // Facebook ID查询优化
+  @@index([googleId]) // Google ID查询优化
+  @@map("auth_credentials")
+}
+
+// 商家信息表 - 通过角色表关联支持多个商家身份
+model Merchant {
+  id                 Int                  @id @default(autoincrement())
+  userRoleId         Int                  @unique @map("user_role_id")
+  businessName       String               @map("business_name")
+  businessLicense    String?              @map("business_license")
+  contactPerson      String               @map("contact_person")
+  businessAddress    String?              @map("business_address")
+  businessType       String?              @map("business_type")
+  verificationStatus MerchantVerifyStatus @default(PENDING) @map("verification_status")
+  businessPhone      String?              @map("business_phone")
+  businessEmail      String?              @map("business_email")
+  createdAt          DateTime             @default(now()) @map("created_at")
+  updatedAt          DateTime             @updatedAt @map("updated_at")
+
+  // 关联关系
+  userRole UserRole @relation(fields: [userRoleId], references: [id], onDelete: Cascade)
+
+  @@index([verificationStatus])
+  @@index([businessType])
+  @@map("merchants")
+}
+
+// 客户信息表
+model Customer {
+  id               Int       @id @default(autoincrement())
+  userRoleId       Int       @unique @map("user_role_id")
+  realName         String?   @map("real_name")
+  idCard           String?   @unique @map("id_card")
+  birthDate        DateTime? @map("birth_date") @db.Date
+  gender           Gender?
+  preferences      Json?
+  address          String?
+  emergencyContact String?   @map("emergency_contact")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  // 关联关系 - 现在字段名称匹配
+  userRole UserRole @relation(fields: [userRoleId], references: [id], onDelete: Cascade)
+
+  @@index([realName])
+  @@index([gender])
+  @@map("customers")
+}
+
+// 管理员信息表 - 直接与用户表一对一关联
+model Admin {
+  id         Int       @id @default(autoincrement())
+  userRoleId Int       @unique @map("user_role_id")
+  employeeId String    @unique @map("employee_id") // 员工编号
+  hireDate   DateTime? @map("hire_date") @db.Date // 入职日期
+  isActive   Boolean   @default(true) @map("is_active") // 是否在职
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  // 关联关系
+  userRole     UserRole        @relation(fields: [userRoleId], references: [id], onDelete: Cascade)
+  positions    AdminPosition[] // 管理员可以拥有多个职位
+  managedDepts Department[] // 作为经理管理的部门
+
+  @@index([employeeId])
+  @@index([isActive])
+  @@map("admins")
+}
+
+// 部门表 - 支持层级结构的部门管理
+model Department {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique @map("name") // 部门名称，全局唯一
+  description String?  @map("description") // 部门描述
+  parentId    Int?     @map("parent_id") // 上级部门ID，支持无限层级
+  managerId   Int?     @map("manager_id") // 部门经理ID
+  isActive    Boolean  @default(true) @map("is_active") // 部门是否启用
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // 关联关系
+  parent      Department?            @relation("DepartmentHierarchy", fields: [parentId], references: [id])
+  children    Department[]           @relation("DepartmentHierarchy") // 下级部门
+  manager     Admin?                 @relation(fields: [managerId], references: [id]) // 部门经理
+  positions   Position[] // 部门下的职位
+  permissions DepartmentPermission[] // 部门权限
+
+  @@index([parentId])
+  @@index([managerId])
+  @@index([isActive])
+  @@index([name])
+  @@map("departments")
+}
+
+// 职位表 - 定义部门内的具体职位
+model Position {
+  id           Int      @id @default(autoincrement())
+  name         String   @map("name") // 职位名称
+  departmentId Int      @map("department_id") // 所属部门
+  description  String?  @map("description") // 职位描述
+  isActive     Boolean  @default(true) @map("is_active") // 职位是否启用
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  // 关联关系
+  department Department      @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  admins     AdminPosition[] // 担任此职位的管理员
+
+  @@unique([departmentId, name]) // 同一部门内职位名称唯一
+  @@index([departmentId])
+  @@index([isActive])
+  @@map("positions")
+}
+
+// 管理员职位关联表 - 管理员和职位的多对多关系
+model AdminPosition {
+  id         Int       @id @default(autoincrement())
+  adminId    Int       @map("admin_id") // 管理员ID
+  positionId Int       @map("position_id") // 职位ID
+  assignedAt DateTime  @default(now()) @map("assigned_at") // 分配时间
+  expiresAt  DateTime? @map("expires_at") // 到期时间，null表示永久
+
+  // 关联关系
+  admin    Admin    @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  position Position @relation(fields: [positionId], references: [id], onDelete: Cascade)
+
+  @@unique([adminId, positionId]) // 防止重复分配同一职位
+  @@index([adminId])
+  @@index([positionId])
+  @@index([assignedAt])
+  @@map("admin_positions")
+}
+
+// 权限表 - 定义系统功能权限
+model Permission {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique @map("name") // 权限名称
+  code        String   @unique @map("code") // 权限代码，用于程序判断
+  module      String   @map("module") // 功能模块，如 "user", "order", "finance"
+  description String?  @map("description") // 权限描述
+  isActive    Boolean  @default(true) @map("is_active") // 权限是否启用
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // 关联关系
+  departments DepartmentPermission[] // 拥有此权限的部门
+
+  @@index([module])
+  @@index([code])
+  @@index([isActive])
+  @@map("permissions")
+}
+
+// 部门权限关联表 - 部门和权限的多对多关系
+model DepartmentPermission {
+  id           Int      @id @default(autoincrement())
+  departmentId Int      @map("department_id") // 部门ID
+  permissionId Int      @map("permission_id") // 权限ID
+  assignedAt   DateTime @default(now()) @map("assigned_at") // 分配时间
+
+  // 关联关系
+  department Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([departmentId, permissionId]) // 防止重复分配同一权限
+  @@index([departmentId])
+  @@index([permissionId])
+  @@map("department_permissions")
+}
+
+// 角色定义表 - 新增表格支持动态角色管理
+model RoleDefinition {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique // admin, merchant, customer 等
+  displayName String   @map("display_name") // 显示名称
+  description String? // 角色描述
+  permissions Json? // 角色权限配置
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@index([name])
+  @@index([isActive])
+  @@map("role_definitions")
+}
+
+// 枚举定义
+enum RoleStatus {
+  ACTIVE // 激活
+  INACTIVE // 未激活
+  SUSPENDED // 暂停
+
+  @@map("role_status")
+}
+
+enum AuthProvider {
+  USERNAME_PASSWORD // 用户名+密码
+  EMAIL_PASSWORD // 邮箱+密码
+  PHONE_PASSWORD // 手机号+密码
+  EMAIL_CODE // 邮箱+验证码
+  PHONE_CODE // 手机号+验证码
+  FACEBOOK // Facebook登录
+  GOOGLE // Google登录
+
+  @@map("auth_provider")
+}
+
+enum MerchantVerifyStatus {
+  PENDING // 待审核
+  VERIFIED // 已验证
+  REJECTED // 已拒绝
+  SUSPENDED // 已暂停
+
+  @@map("merchant_verify_status")
+}
+
+enum Gender {
+  MALE // 男性
+  FEMALE // 女性
+  OTHER // 其他
+
+  @@map("gender")
+}

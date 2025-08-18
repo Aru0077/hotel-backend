@@ -33,8 +33,8 @@ export const validationSchema = Joi.object({
   GOOGLE_CLIENT_ID: Joi.string().required(),
   GOOGLE_CLIENT_SECRET: Joi.string().required(),
   // 阿里云短信
-  ALIYUN_SMS_ACCESS_KEY_ID: Joi.string().required(),
-  ALIYUN_SMS_ACCESS_KEY_SECRET: Joi.string().required(),
+  ALIBABA_CLOUD_ACCESS_KEY_ID: Joi.string().required(),
+  ALIBABA_CLOUD_ACCESS_KEY_SECRET: Joi.string().required(),
   ALIYUN_SMS_ENDPOINT: Joi.string().default('dysmsapi.aliyuncs.com'),
   ALIYUN_SMS_SIGN_NAME: Joi.string().required(),
   ALIYUN_SMS_TEMPLATE_REGISTER: Joi.string().required(),
@@ -115,8 +115,8 @@ export default (): AppConfig => {
     },
     sms: {
       aliyun: {
-        accessKeyId: process.env.ALIYUN_SMS_ACCESS_KEY_ID ?? '',
-        accessKeySecret: process.env.ALIYUN_SMS_ACCESS_KEY_SECRET ?? '',
+        accessKeyId: process.env.ALIBABA_CLOUD_ACCESS_KEY_ID ?? '',
+        accessKeySecret: process.env.ALIBABA_CLOUD_ACCESS_KEY_SECRET ?? '',
         endpoint: process.env.ALIYUN_SMS_ENDPOINT ?? 'dysmsapi.aliyuncs.com',
         signName: process.env.ALIYUN_SMS_SIGN_NAME ?? '',
         templates: {

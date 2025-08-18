@@ -1,10 +1,7 @@
-// ===================================
-// 5. 创建短信服务
-// ===================================
 // src/sms/sms.service.ts
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
-import Dysmsapi, * as $Dysmsapi from '@alicloud/dysmsapi20170525';
-import { Config as OpenApiConfig } from '@alicloud/openapi-client';
+import Dysmsapi20170525, * as $Dysmsapi20170525 from '@alicloud/dysmsapi20170525';
+import * as $OpenApi from '@alicloud/openapi-client';
 import Credential from '@alicloud/credentials';
 import * as $Util from '@alicloud/tea-util';
 import { AppConfigService } from '../config/config.service';
@@ -33,7 +30,7 @@ export interface SmsResponse {
 @Injectable()
 export class SmsService {
   private readonly logger = new Logger(SmsService.name);
-  private client: Dysmsapi;
+  private client: Dysmsapi20170525;
   private readonly isDevelopment: boolean;
 
   constructor(private readonly configService: AppConfigService) {
@@ -41,34 +38,32 @@ export class SmsService {
     this.initializeClient();
   }
 
+  /**
+   * 初始化阿里云短信客户端
+   */
   private initializeClient(): void {
     try {
       const smsConfig = this.configService.aliyunSmsConfig;
 
-      // 创建凭据实例 - 使用显式传递AK方式
-      // 2025年推荐的凭据配置方式 - 更简洁的环境变量支持
-      const credential = new Credential({
-        accessKeyId: smsConfig.accessKeyId,
-        accessKeySecret: smsConfig.accessKeySecret,
-        type: 'access_key',
+      // 使用官方标准环境变量方式（推荐）
+      // 由于环境变量已设置为 ALIBABA_CLOUD_ACCESS_KEY_ID 和 ALIBABA_CLOUD_ACCESS_KEY_SECRET
+      // Credential 构造函数会自动读取这些标准环境变量
+      const credential = new Credential();
+
+      // 根据官方示例创建配置
+      const config = new $OpenApi.Config({
+        credential: credential,
       });
 
-      // 创建配置实例 - 使用正确的Config类
-      const config = new OpenApiConfig({
-        credential,
-        endpoint: smsConfig.endpoint,
-        // 2025年新增的配置选项
-        connectTimeout: 10000, // 连接超时
-        readTimeout: 10000, // 读取超时
-        autoRetry: true, // 自动重试
-        maxIdleTimeMillis: 60000, // 连接池最大空闲时间
-        maxIdleConns: 60, // 最大空闲连接数
-      });
+      // 设置访问的域名
+      config.endpoint = smsConfig.endpoint;
 
       // 创建短信客户端
-      this.client = new Dysmsapi(config);
+      this.client = new Dysmsapi20170525(config);
 
-      this.logger.log('阿里云短信客户端初始化成功');
+      this.logger.log(
+        `阿里云短信客户端初始化成功 - Endpoint: ${smsConfig.endpoint}, SignName: ${smsConfig.signName}`,
+      );
     } catch (error) {
       this.logger.error('阿里云短信客户端初始化失败', error);
       throw error;
@@ -76,7 +71,7 @@ export class SmsService {
   }
 
   /**
-   * 发送通用短信
+   * 发送短信
    */
   async sendSms(options: SendSmsOptions): Promise<SmsResponse> {
     const startTime = Date.now();
@@ -84,35 +79,26 @@ export class SmsService {
     try {
       const smsConfig = this.configService.aliyunSmsConfig;
 
-      // 2025年改进的请求构建
-      const sendSmsRequest = new $Dysmsapi.SendSmsRequest({
+      // 构建发送短信请求 - 按照官方示例
+      const sendSmsRequest = new $Dysmsapi20170525.SendSmsRequest({
         phoneNumbers: options.phoneNumber,
         signName: options.signName ?? smsConfig.signName,
         templateCode: options.templateCode,
         templateParam: JSON.stringify(options.templateParam),
       });
 
-      // 2025年增强的运行时配置
-      const runtime = new $Util.RuntimeOptions({
-        autoRetry: true,
-        ignoreSSL: false,
-        maxIdleTimeMillis: 60000,
-        maxIdleConns: 60,
-        keepAliveDurationMillis: 5000,
-        maxRequests: 100,
-        maxRequestsPerHost: 100,
-        // 2025年新增的追踪配置
-        isModel: false,
-        validateRequestModel: false,
-        validateResponseModel: false,
-      });
+      // 复制运行时选项 - 按照官方示例
+      const runtime = new $Util.RuntimeOptions({});
 
+      // 发送短信 - 按照官方示例
       const response = await this.client.sendSmsWithOptions(
         sendSmsRequest,
         runtime,
       );
+
       const duration = Date.now() - startTime;
 
+      // 检查响应
       if (response.body?.code === 'OK') {
         this.logger.log(
           `短信发送成功: ${this.maskPhoneNumber(options.phoneNumber)}, ` +
@@ -122,13 +108,13 @@ export class SmsService {
         return {
           success: true,
           bizId: response.body.bizId,
-          message: 'SMS sent successfully',
+          message: response.body.message,
           code: response.body.code,
         };
       } else {
         this.logger.error(
           `短信发送失败: ${this.maskPhoneNumber(options.phoneNumber)}, ` +
-            `错误码: ${response.body?.code}, 错误信息: ${response.body?.message}, 耗时: ${duration}ms`,
+            `错误码: ${response.body?.code}, 错误信息: ${response.body?.message}`,
         );
 
         return {
@@ -139,14 +125,7 @@ export class SmsService {
       }
     } catch (error) {
       const duration = Date.now() - startTime;
-
-      // 2025年增强的错误处理
-      const errorResult = this.handleSmsError(
-        error,
-        options.phoneNumber,
-        duration,
-      );
-      return errorResult;
+      return this.handleSmsError(error, options.phoneNumber, duration);
     }
   }
 
@@ -164,7 +143,7 @@ export class SmsService {
       throw new BadRequestException(errorMsg);
     }
 
-    // 2025年增加的参数验证
+    // 验证参数
     this.validatePhoneNumber(options.phoneNumber);
     this.validateVerificationCode(options.code);
 
@@ -176,7 +155,6 @@ export class SmsService {
       },
     });
 
-    // 2025年增强的结果记录
     if (result.success) {
       this.logger.log(
         `验证码短信发送成功: ${this.maskPhoneNumber(options.phoneNumber)}, ` +
@@ -212,7 +190,7 @@ export class SmsService {
   }
 
   /**
-   * 2025年增强的错误处理方法
+   * 错误处理方法
    */
   private handleSmsError(
     error: unknown,
@@ -220,65 +198,38 @@ export class SmsService {
     duration: number,
   ): SmsResponse {
     if (error instanceof Error) {
-      // 检查是否是网络错误
-      if (
-        error.message.includes('timeout') ||
-        error.message.includes('ECONNRESET')
-      ) {
-        this.logger.error(
-          `短信发送网络错误: ${this.maskPhoneNumber(phoneNumber)}, ` +
-            `错误: ${error.message}, 耗时: ${duration}ms`,
-        );
-        return {
-          success: false,
-          message: '网络连接超时，请稍后重试',
-          code: 'NETWORK_ERROR',
-        };
-      }
-
-      // 检查是否是认证错误
-      if (
-        error.message.includes('InvalidAccessKeyId') ||
-        error.message.includes('SignatureDoesNotMatch')
-      ) {
-        this.logger.error(`短信发送认证错误: ${error.message}`);
-        return {
-          success: false,
-          message: '认证失败，请检查AccessKey配置',
-          code: 'AUTH_ERROR',
-        };
-      }
-
-      // 检查是否是限流错误
-      if (
-        error.message.includes('Throttling') ||
-        error.message.includes('QpsLimitExceeded')
-      ) {
-        this.logger.warn(`短信发送限流: ${this.maskPhoneNumber(phoneNumber)}`);
-        return {
-          success: false,
-          message: '发送频率过高，请稍后重试',
-          code: 'THROTTLING_ERROR',
-        };
-      }
-
-      // 通用错误处理
       this.logger.error(
         `短信发送异常: ${this.maskPhoneNumber(phoneNumber)}, ` +
           `错误: ${error.message}, 耗时: ${duration}ms`,
         error.stack,
       );
 
+      // 根据官方示例处理错误信息
+      let errorMessage = error.message;
+      let errorCode = 'UNKNOWN_ERROR';
+
+      // 检查常见错误类型
+      if (error.message.includes('InvalidAccessKeyId')) {
+        errorMessage = 'AccessKey ID 无效';
+        errorCode = 'INVALID_ACCESS_KEY';
+      } else if (error.message.includes('SignatureDoesNotMatch')) {
+        errorMessage = 'AccessKey Secret 错误';
+        errorCode = 'INVALID_SECRET';
+      } else if (error.message.includes('Throttling')) {
+        errorMessage = '请求过于频繁';
+        errorCode = 'THROTTLING';
+      } else if (error.message.includes('InvalidTemplate')) {
+        errorMessage = '短信模板不存在';
+        errorCode = 'INVALID_TEMPLATE';
+      }
+
       return {
         success: false,
-        message: this.isDevelopment
-          ? error.message
-          : '短信发送失败，请稍后重试',
-        code: 'UNKNOWN_ERROR',
+        message: this.isDevelopment ? errorMessage : '短信发送失败，请稍后重试',
+        code: errorCode,
       };
     }
 
-    // 处理非Error类型的异常
     this.logger.error(
       `短信发送未知异常: ${this.maskPhoneNumber(phoneNumber)}, 耗时: ${duration}ms`,
       error,
@@ -291,18 +242,24 @@ export class SmsService {
     };
   }
 
+  /**
+   * 验证手机号格式
+   */
   private validatePhoneNumber(phoneNumber: string): void {
     if (!phoneNumber) {
       throw new BadRequestException('手机号码不能为空');
     }
 
-    // 简单的手机号格式验证
+    // 基本的手机号格式验证
     const phoneRegex = /^1[3-9]\d{9}$|^\+86[1-9]\d{10}$|^\+\d{1,3}\d{4,14}$/;
     if (!phoneRegex.test(phoneNumber)) {
       throw new BadRequestException('手机号码格式不正确');
     }
   }
 
+  /**
+   * 验证验证码格式
+   */
   private validateVerificationCode(code: string): void {
     if (!code) {
       throw new BadRequestException('验证码不能为空');
@@ -316,27 +273,30 @@ export class SmsService {
       throw new BadRequestException('验证码只能包含数字');
     }
   }
+
   /**
-   * 健康检查方法
+   * 手机号脱敏
+   */
+  private maskPhoneNumber(phoneNumber: string): string {
+    if (!phoneNumber) return '';
+
+    // 处理不同格式的手机号
+    if (phoneNumber.startsWith('+86')) {
+      // +8613812345678 -> +86138****5678
+      return phoneNumber.replace(/(\+86\d{3})\d{4}(\d{4})/, '$1****$2');
+    } else if (phoneNumber.startsWith('+')) {
+      // 其他国际号码 -> +1234****7890
+      return phoneNumber.replace(/(\+\d{1,3}\d{2})\d*(\d{4})/, '$1****$2');
+    } else {
+      // 国内号码 13812345678 -> 138****5678
+      return phoneNumber.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2');
+    }
+  }
+
+  /**
+   * 健康检查
    */
   isHealthy(): boolean {
-    try {
-      // 检查客户端是否正常初始化
-      if (!this.client) {
-        return false;
-      }
-
-      // 2025年新增：实际网络连通性检查
-      // 注意：这里可能会产生费用，建议在生产环境中谨慎使用
-      if (!this.isDevelopment) {
-        return true; // 生产环境仅检查客户端存在
-      }
-
-      // 开发环境可以进行更详细的检查
-      return true;
-    } catch (error) {
-      this.logger.error('短信服务健康检查失败', error);
-      return false;
-    }
+    return !!this.client;
   }
 }

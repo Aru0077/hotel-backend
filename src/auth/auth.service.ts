@@ -28,6 +28,7 @@ import {
   JwtPayload,
   SocialUserInfo,
   UserWithCredentials,
+  UserWithRoles,
   VerificationCodeType,
 } from '../types';
 import { SmsService } from 'src/sms/sms.service';
@@ -501,7 +502,9 @@ export class AuthService {
   async validateOrCreateSocialUser(
     provider: 'facebook' | 'google',
     userInfo: SocialUserInfo,
-  ): Promise<UserWithCredentials> {}
+  ): Promise<UserWithRoles> {
+    throw new Error(`社交媒体登录功能尚未实现: ${provider}`);
+  }
 
   // ============ 验证码相关方法 ============
 
@@ -628,7 +631,7 @@ export class AuthService {
   /**
    * 生成访问令牌和刷新令牌
    */
-  async generateTokens(user: UserWithCredentials): Promise<{
+  async generateTokens(user: UserWithRoles): Promise<{
     accessToken: string;
     refreshToken: string;
     expiresIn: string;
@@ -779,13 +782,13 @@ export class AuthService {
   /**
    * 构建JWT载荷
    */
-  private buildJwtPayload(user: UserWithCredentials): JwtPayload {
+  private buildJwtPayload(user: UserWithRoles): JwtPayload {
     return {
       sub: user.id,
       username: user.credentials?.username ?? undefined,
       email: user.credentials?.email ?? undefined,
       phone: user.credentials?.phone ?? undefined,
-      roles: user.roles.roleType,
+      roles: user.roles.map((role) => role.roleType),
       iat: Math.floor(Date.now() / 1000),
     };
   }
@@ -795,7 +798,7 @@ export class AuthService {
    */
   private formatAuthResponse(
     tokens: { accessToken: string; refreshToken: string; expiresIn: string },
-    user: UserWithCredentials,
+    user: UserWithRoles,
   ): AuthTokenResponse {
     return {
       accessToken: tokens.accessToken,

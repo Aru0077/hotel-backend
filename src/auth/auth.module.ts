@@ -15,7 +15,9 @@ import { AuthService } from './auth.service';
 import { FacebookAuthGuard } from './guards/facebook-auth.guard';
 import { GoogleAuthGuard } from './guards/google-auth.guard';
 import { LocalAuthGuard } from './guards/local-auth.guard';
-import { TokenBlacklistService } from './services/token-blacklist.service';
+import { PasswordService } from './services/password.service';
+import { VerificationCodeService } from './services/verification-code.service';
+import { TokenService } from './services/token.service';
 
 @Module({
   imports: [
@@ -34,21 +36,35 @@ import { TokenBlacklistService } from './services/token-blacklist.service';
   ],
   controllers: [AuthController],
   providers: [
+    // 核心认证服务
     AuthService,
-    JwtStrategy,
 
+    // 专门化服务
+    // 密码服务
+    PasswordService,
+    // 验证码服务
+    VerificationCodeService,
     // Token黑名单
-    TokenBlacklistService,
+    TokenService,
 
-    LocalAuthGuard,
+    // Passport策略
+    JwtStrategy,
     LocalStrategy,
-
-    FacebookAuthGuard,
     // FacebookStrategy,
-
-    GoogleAuthGuard,
     // GoogleStrategy,
+
+    // Guards
+    LocalAuthGuard,
+    FacebookAuthGuard,
+    GoogleAuthGuard,
   ],
-  exports: [PassportModule, JwtModule, AuthService],
+  exports: [
+    PassportModule,
+    JwtModule,
+    AuthService,
+    PasswordService,
+    VerificationCodeService,
+    TokenService,
+  ],
 })
 export class AuthModule {}

@@ -25,7 +25,7 @@ import { SmsModule } from './sms/sms.module';
     PrismaModule,
     RedisModule,
 
-    // 功能模块
+    // 功能模块 业务模块
     AuthModule,
     SmsModule,
 

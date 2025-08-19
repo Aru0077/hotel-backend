@@ -4,13 +4,13 @@ import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { AppConfigService } from '../../config/config.service';
 import { JwtPayload } from '../../types/auth.types';
-import { TokenBlacklistService } from '@auth/services/token-blacklist.service';
+import { TokenService } from '../services/token.service';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
   constructor(
     private readonly configService: AppConfigService,
-    private readonly tokenBlacklistService: TokenBlacklistService,
+    private readonly tokenService: TokenService,
   ) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
@@ -26,16 +26,9 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     }
 
     // 检查token是否在黑名单中
-    if (
-      payload.jti &&
-      (await this.tokenBlacklistService.isBlacklisted(payload.jti))
-    ) {
+    if (payload.jti && (await this.tokenService.isBlacklisted(payload.jti))) {
       throw new UnauthorizedException('访问令牌已被撤销');
     }
-    // 检查令牌是否过期,手动检查 payload.exp 是多余的，passport-jwt 已经处理了过期验证
-    // if (payload.exp && Date.now() >= payload.exp * 1000) {
-    //   throw new UnauthorizedException('访问令牌已过期');
-    // }
 
     // 返回用户信息，将被附加到 request.user
     return {

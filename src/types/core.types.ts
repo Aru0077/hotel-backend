@@ -1,13 +1,15 @@
 // src/types/core.types.ts
-import { Prisma } from '@prisma/client';
-
-// ============ 重新导出Prisma枚举 ============
-export {
+import {
+  Prisma,
+  RoleType,
   RoleStatus,
   AuthProvider,
   MerchantVerifyStatus,
   Gender,
 } from '@prisma/client';
+
+// ============ 重新导出Prisma枚举 ============
+export { RoleType, RoleStatus, AuthProvider, MerchantVerifyStatus, Gender };
 
 // ============ 业务枚举（应用层） ============
 export enum VerificationCodeType {
@@ -107,8 +109,8 @@ export interface CreateUserData {
   // 密码相关
   hashedPassword?: string;
 
-  // 角色信息 - 匹配UserRole.roleType字段
-  roleType: string;
+  // 角色信息 - 使用RoleType枚举
+  roleType: RoleType; // 更改为使用Prisma的RoleType枚举
 
   // 验证状态 - 匹配AuthCredential表字段
   isUsernameVerified: boolean;

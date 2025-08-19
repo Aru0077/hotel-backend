@@ -20,6 +20,7 @@ import {
   UserWithCredentials,
   UserWithRoles,
   CreateUserData,
+  RoleType,
 } from '../types';
 import { PasswordService } from './services/password.service';
 import { VerificationCodeService } from './services/verification-code.service';
@@ -51,7 +52,7 @@ export class AuthService {
     const userData: CreateUserData = {
       username: dto.username,
       hashedPassword: await this.passwordService.hashPassword(dto.password),
-      roleType: dto.roleType ?? 'customer',
+      roleType: dto.roleType ?? RoleType.CUSTOMER, // 使用RoleType枚举
       isUsernameVerified: true,
       isEmailVerified: false,
       isPhoneVerified: false,
@@ -85,7 +86,7 @@ export class AuthService {
       hashedPassword: dto.password
         ? await this.passwordService.hashPassword(dto.password)
         : undefined,
-      roleType: dto.roleType ?? 'customer',
+      roleType: dto.roleType ?? RoleType.CUSTOMER, // 使用RoleType枚举
       isUsernameVerified: false,
       isEmailVerified: true,
       isPhoneVerified: false,
@@ -126,7 +127,7 @@ export class AuthService {
       hashedPassword: dto.password
         ? await this.passwordService.hashPassword(dto.password)
         : undefined,
-      roleType: dto.roleType ?? 'customer',
+      roleType: dto.roleType ?? RoleType.CUSTOMER, // 使用RoleType枚举
       isUsernameVerified: false,
       isEmailVerified: false,
       isPhoneVerified: true,

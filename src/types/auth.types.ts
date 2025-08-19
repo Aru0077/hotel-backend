@@ -1,5 +1,6 @@
 // src/types/auth.types.ts
 import { UserWithRoles } from './core.types';
+import { RoleType } from '@prisma/client';
 
 // ============ JWT相关类型 ============
 export interface JwtPayload {
@@ -7,7 +8,7 @@ export interface JwtPayload {
   username?: string;
   email?: string;
   phone?: string;
-  roles: string[];
+  roles: RoleType[]; // 更改为使用RoleType枚举数组
   iat?: number;
   exp?: number;
   jti?: string;
@@ -35,7 +36,7 @@ export interface AuthUserInfo {
   username?: string;
   email?: string;
   phone?: string;
-  roles: string[];
+  roles: RoleType[]; // 更改为使用RoleType枚举数组
   isEmailVerified: boolean;
   isPhoneVerified: boolean;
   lastLoginAt?: Date;

@@ -10,18 +10,24 @@ import {
   MaxLength,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { VerificationCodeType, VerificationCodePurpose } from '../../types';
+import {
+  VerificationCodeType,
+  VerificationCodePurpose,
+  RoleType,
+} from '../../types';
 
 // ============ 注册相关DTO ============
 abstract class BaseRegisterDto {
   @ApiPropertyOptional({
     description: '用户角色类型',
-    example: 'customer',
-    default: 'customer',
+    enum: RoleType,
+    enumName: 'RoleType',
+    example: RoleType.CUSTOMER,
+    default: RoleType.CUSTOMER,
   })
   @IsOptional()
-  @IsString()
-  roleType?: string = 'customer';
+  @IsEnum(RoleType, { message: '无效的角色类型' })
+  roleType?: RoleType = RoleType.CUSTOMER;
 }
 
 export class UsernamePasswordRegisterDto extends BaseRegisterDto {

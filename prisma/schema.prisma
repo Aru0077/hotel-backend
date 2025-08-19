@@ -13,6 +13,52 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// 枚举定义
+enum RoleType {
+  ADMIN // 管理员
+  MERCHANT // 商家
+  CUSTOMER // 客户
+
+  @@map("role_type")
+}
+
+enum RoleStatus {
+  ACTIVE // 激活
+  INACTIVE // 未激活
+  SUSPENDED // 暂停
+
+  @@map("role_status")
+}
+
+enum AuthProvider {
+  USERNAME_PASSWORD // 用户名+密码
+  EMAIL_PASSWORD // 邮箱+密码
+  PHONE_PASSWORD // 手机号+密码
+  EMAIL_CODE // 邮箱+验证码
+  PHONE_CODE // 手机号+验证码
+  FACEBOOK // Facebook登录
+  GOOGLE // Google登录
+
+  @@map("auth_provider")
+}
+
+enum MerchantVerifyStatus {
+  PENDING // 待审核
+  VERIFIED // 已验证
+  REJECTED // 已拒绝
+  SUSPENDED // 已暂停
+
+  @@map("merchant_verify_status")
+}
+
+enum Gender {
+  MALE // 男性
+  FEMALE // 女性
+  OTHER // 其他
+
+  @@map("gender")
+}
+
 // 核心用户表
 model User {
   id          Int       @id @default(autoincrement())
@@ -31,7 +77,7 @@ model User {
 model UserRole {
   id        Int        @id @default(autoincrement())
   userId    Int        @map("user_id")
-  roleType  String     @map("role_type")
+  roleType  RoleType   @map("role_type") // 改为使用枚举类型
   status    RoleStatus @default(ACTIVE)
   createdAt DateTime   @default(now()) @map("created_at")
   expiresAt DateTime?  @map("expires_at")
@@ -154,165 +200,9 @@ model Admin {
 
   // 关联关系
   userRole     UserRole        @relation(fields: [userRoleId], references: [id], onDelete: Cascade)
-  positions    AdminPosition[] // 管理员可以拥有多个职位
-  managedDepts Department[] // 作为经理管理的部门
 
   @@index([employeeId])
   @@index([isActive])
   @@map("admins")
 }
 
-// 部门表 - 支持层级结构的部门管理
-model Department {
-  id          Int      @id @default(autoincrement())
-  name        String   @unique @map("name") // 部门名称，全局唯一
-  description String?  @map("description") // 部门描述
-  parentId    Int?     @map("parent_id") // 上级部门ID，支持无限层级
-  managerId   Int?     @map("manager_id") // 部门经理ID
-  isActive    Boolean  @default(true) @map("is_active") // 部门是否启用
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
-
-  // 关联关系
-  parent      Department?            @relation("DepartmentHierarchy", fields: [parentId], references: [id])
-  children    Department[]           @relation("DepartmentHierarchy") // 下级部门
-  manager     Admin?                 @relation(fields: [managerId], references: [id]) // 部门经理
-  positions   Position[] // 部门下的职位
-  permissions DepartmentPermission[] // 部门权限
-
-  @@index([parentId])
-  @@index([managerId])
-  @@index([isActive])
-  @@index([name])
-  @@map("departments")
-}
-
-// 职位表 - 定义部门内的具体职位
-model Position {
-  id           Int      @id @default(autoincrement())
-  name         String   @map("name") // 职位名称
-  departmentId Int      @map("department_id") // 所属部门
-  description  String?  @map("description") // 职位描述
-  isActive     Boolean  @default(true) @map("is_active") // 职位是否启用
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
-
-  // 关联关系
-  department Department      @relation(fields: [departmentId], references: [id], onDelete: Cascade)
-  admins     AdminPosition[] // 担任此职位的管理员
-
-  @@unique([departmentId, name]) // 同一部门内职位名称唯一
-  @@index([departmentId])
-  @@index([isActive])
-  @@map("positions")
-}
-
-// 管理员职位关联表 - 管理员和职位的多对多关系
-model AdminPosition {
-  id         Int       @id @default(autoincrement())
-  adminId    Int       @map("admin_id") // 管理员ID
-  positionId Int       @map("position_id") // 职位ID
-  assignedAt DateTime  @default(now()) @map("assigned_at") // 分配时间
-  expiresAt  DateTime? @map("expires_at") // 到期时间，null表示永久
-
-  // 关联关系
-  admin    Admin    @relation(fields: [adminId], references: [id], onDelete: Cascade)
-  position Position @relation(fields: [positionId], references: [id], onDelete: Cascade)
-
-  @@unique([adminId, positionId]) // 防止重复分配同一职位
-  @@index([adminId])
-  @@index([positionId])
-  @@index([assignedAt])
-  @@map("admin_positions")
-}
-
-// 权限表 - 定义系统功能权限
-model Permission {
-  id          Int      @id @default(autoincrement())
-  name        String   @unique @map("name") // 权限名称
-  code        String   @unique @map("code") // 权限代码，用于程序判断
-  module      String   @map("module") // 功能模块，如 "user", "order", "finance"
-  description String?  @map("description") // 权限描述
-  isActive    Boolean  @default(true) @map("is_active") // 权限是否启用
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
-
-  // 关联关系
-  departments DepartmentPermission[] // 拥有此权限的部门
-
-  @@index([module])
-  @@index([code])
-  @@index([isActive])
-  @@map("permissions")
-}
-
-// 部门权限关联表 - 部门和权限的多对多关系
-model DepartmentPermission {
-  id           Int      @id @default(autoincrement())
-  departmentId Int      @map("department_id") // 部门ID
-  permissionId Int      @map("permission_id") // 权限ID
-  assignedAt   DateTime @default(now()) @map("assigned_at") // 分配时间
-
-  // 关联关系
-  department Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
-  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
-
-  @@unique([departmentId, permissionId]) // 防止重复分配同一权限
-  @@index([departmentId])
-  @@index([permissionId])
-  @@map("department_permissions")
-}
-
-// 角色定义表 - 新增表格支持动态角色管理
-model RoleDefinition {
-  id          Int      @id @default(autoincrement())
-  name        String   @unique // admin, merchant, customer 等
-  displayName String   @map("display_name") // 显示名称
-  description String? // 角色描述
-  permissions Json? // 角色权限配置
-  isActive    Boolean  @default(true) @map("is_active")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
-
-  @@index([name])
-  @@index([isActive])
-  @@map("role_definitions")
-}
-
-// 枚举定义
-enum RoleStatus {
-  ACTIVE // 激活
-  INACTIVE // 未激活
-  SUSPENDED // 暂停
-
-  @@map("role_status")
-}
-
-enum AuthProvider {
-  USERNAME_PASSWORD // 用户名+密码
-  EMAIL_PASSWORD // 邮箱+密码
-  PHONE_PASSWORD // 手机号+密码
-  EMAIL_CODE // 邮箱+验证码
-  PHONE_CODE // 手机号+验证码
-  FACEBOOK // Facebook登录
-  GOOGLE // Google登录
-
-  @@map("auth_provider")
-}
-
-enum MerchantVerifyStatus {
-  PENDING // 待审核
-  VERIFIED // 已验证
-  REJECTED // 已拒绝
-  SUSPENDED // 已暂停
-
-  @@map("merchant_verify_status")
-}
-
-enum Gender {
-  MALE // 男性
-  FEMALE // 女性
-  OTHER // 其他
-
-  @@map("gender")
-}

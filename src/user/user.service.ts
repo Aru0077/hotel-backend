@@ -208,9 +208,17 @@ export class UserService {
   }
 
   // ============ 用户状态检查 ============
-
+  isUserActive(user: UserWithRoles): boolean;
+  isUserActive(user: UserWithCredentials): boolean;
   isUserActive(user: UserWithRoles | UserWithCredentials): boolean {
-    return user.roles && user.roles.length > 0;
+    // 类型守卫：检查用户对象是否包含roles属性
+    if (this.hasRoles(user)) {
+      return user.roles.length > 0;
+    }
+
+    // 对于没有roles的用户类型，默认认为是激活的
+    // 因为UserWithCredentials类型意味着用户已经存在
+    return true;
   }
 
   // ============ 私有辅助方法 ============

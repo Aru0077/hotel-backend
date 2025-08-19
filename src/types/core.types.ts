@@ -12,11 +12,6 @@ import {
 export { RoleType, RoleStatus, AuthProvider, MerchantVerifyStatus, Gender };
 
 // ============ 业务枚举（应用层） ============
-export enum VerificationCodeType {
-  EMAIL = 'EMAIL',
-  PHONE = 'PHONE',
-}
-
 export enum VerificationCodePurpose {
   REGISTER = 'register',
   LOGIN = 'login',
@@ -46,11 +41,16 @@ export type UserWithRoles = Prisma.UserGetPayload<{
     credentials: true;
     roles: {
       where: { status: 'ACTIVE' };
+      include: {
+        merchant: true;
+        customer: true;
+        admin: true;
+      };
     };
   };
 }>;
 
-// ============ 业务实体类型（简化版） ============
+// ============ 业务实体类型 ============
 export type MerchantProfile = Prisma.MerchantGetPayload<{
   include: {
     userRole: {
@@ -91,6 +91,26 @@ export type CustomerProfile = Prisma.CustomerGetPayload<{
   };
 }>;
 
+export type AdminProfile = Prisma.AdminGetPayload<{
+  include: {
+    userRole: {
+      include: {
+        user: {
+          include: {
+            credentials: {
+              select: {
+                email: true;
+                phone: true;
+                username: true;
+              };
+            };
+          };
+        };
+      };
+    };
+  };
+}>;
+
 // ============ Prisma事务类型 ============
 export type PrismaTransaction = Omit<
   Prisma.TransactionClient,
@@ -99,26 +119,29 @@ export type PrismaTransaction = Omit<
 
 // ============ 用户创建数据接口 ============
 export interface CreateUserData {
-  // 认证标识符 - 至少需要一个
+  // 认证标识符
   username?: string;
   email?: string;
   phone?: string;
   facebookId?: string;
   googleId?: string;
 
-  // 密码相关
+  // 密码
   hashedPassword?: string;
 
-  // 角色信息 - 使用RoleType枚举
-  roleType: RoleType; // 更改为使用Prisma的RoleType枚举
+  // 验证状态
+  isEmailVerified?: boolean;
+  isPhoneVerified?: boolean;
+  isFacebookVerified?: boolean;
+  isGoogleVerified?: boolean;
 
-  // 验证状态 - 匹配AuthCredential表字段
-  isUsernameVerified: boolean;
-  isEmailVerified: boolean;
-  isPhoneVerified: boolean;
-  isFacebookVerified: boolean;
-  isGoogleVerified: boolean;
+  // 角色信息
+  roleType: RoleType;
+  roleStatus?: RoleStatus;
+  roleExpiresAt?: Date;
 
-  // 额外数据 - 匹配AuthCredential.additionalData字段
-  additionalData?: Record<string, unknown>;
+  // 角色特定数据
+  merchantData?: Omit<Prisma.MerchantCreateInput, 'userRole'>;
+  customerData?: Omit<Prisma.CustomerCreateInput, 'userRole'>;
+  adminData?: Omit<Prisma.AdminCreateInput, 'userRole'>;
 }

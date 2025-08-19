@@ -8,29 +8,14 @@ import {
   IsNotEmpty,
   MinLength,
   MaxLength,
+  ValidateIf,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import {
-  VerificationCodeType,
-  VerificationCodePurpose,
-  RoleType,
-} from '../../types';
+import { RoleType } from '@prisma/client';
+import { VerificationCodePurpose } from '../../types';
 
 // ============ 注册相关DTO ============
-abstract class BaseRegisterDto {
-  @ApiPropertyOptional({
-    description: '用户角色类型',
-    enum: RoleType,
-    enumName: 'RoleType',
-    example: RoleType.CUSTOMER,
-    default: RoleType.CUSTOMER,
-  })
-  @IsOptional()
-  @IsEnum(RoleType, { message: '无效的角色类型' })
-  roleType?: RoleType = RoleType.CUSTOMER;
-}
-
-export class UsernamePasswordRegisterDto extends BaseRegisterDto {
+export class UsernamePasswordRegisterDto {
   @ApiProperty({
     description: '用户名',
     example: 'johndoe',
@@ -53,9 +38,18 @@ export class UsernamePasswordRegisterDto extends BaseRegisterDto {
   @MinLength(8, { message: '密码至少8个字符' })
   @MaxLength(128, { message: '密码最多128个字符' })
   password: string;
+
+  @ApiProperty({
+    description: '用户角色类型',
+    enum: RoleType,
+    example: RoleType.CUSTOMER,
+  })
+  @IsNotEmpty({ message: '角色类型不能为空' })
+  @IsEnum(RoleType, { message: '无效的角色类型' })
+  roleType: RoleType;
 }
 
-export class EmailRegisterDto extends BaseRegisterDto {
+export class EmailRegisterDto {
   @ApiProperty({
     description: '邮箱地址',
     example: 'john@example.com',
@@ -86,9 +80,18 @@ export class EmailRegisterDto extends BaseRegisterDto {
   @MinLength(8, { message: '密码至少8个字符' })
   @MaxLength(128, { message: '密码最多128个字符' })
   password?: string;
+
+  @ApiProperty({
+    description: '用户角色类型',
+    enum: RoleType,
+    example: RoleType.CUSTOMER,
+  })
+  @IsNotEmpty({ message: '角色类型不能为空' })
+  @IsEnum(RoleType, { message: '无效的角色类型' })
+  roleType: RoleType;
 }
 
-export class PhoneRegisterDto extends BaseRegisterDto {
+export class PhoneRegisterDto {
   @ApiProperty({
     description: '手机号码',
     example: '+8613800138000',
@@ -119,6 +122,15 @@ export class PhoneRegisterDto extends BaseRegisterDto {
   @MinLength(8, { message: '密码至少8个字符' })
   @MaxLength(128, { message: '密码最多128个字符' })
   password?: string;
+
+  @ApiProperty({
+    description: '用户角色类型',
+    enum: RoleType,
+    example: RoleType.CUSTOMER,
+  })
+  @IsNotEmpty({ message: '角色类型不能为空' })
+  @IsEnum(RoleType, { message: '无效的角色类型' })
+  roleType: RoleType;
 }
 
 // ============ 登录相关DTO ============
@@ -138,6 +150,15 @@ export class PasswordLoginDto {
   @IsString()
   @MinLength(1, { message: '密码不能为空' })
   password: string;
+
+  @ApiProperty({
+    description: '前端角色类型',
+    enum: RoleType,
+    example: RoleType.CUSTOMER,
+  })
+  @IsNotEmpty({ message: '角色类型不能为空' })
+  @IsEnum(RoleType, { message: '无效的角色类型' })
+  roleType: RoleType;
 }
 
 export class EmailLoginDto {
@@ -158,6 +179,15 @@ export class EmailLoginDto {
   @MinLength(4, { message: '验证码至少4位' })
   @MaxLength(6, { message: '验证码最多6位' })
   verificationCode: string;
+
+  @ApiProperty({
+    description: '前端角色类型',
+    enum: RoleType,
+    example: RoleType.CUSTOMER,
+  })
+  @IsNotEmpty({ message: '角色类型不能为空' })
+  @IsEnum(RoleType, { message: '无效的角色类型' })
+  roleType: RoleType;
 }
 
 export class PhoneLoginDto {
@@ -178,32 +208,32 @@ export class PhoneLoginDto {
   @MinLength(4, { message: '验证码至少4位' })
   @MaxLength(6, { message: '验证码最多6位' })
   verificationCode: string;
+
+  @ApiProperty({
+    description: '前端角色类型',
+    enum: RoleType,
+    example: RoleType.CUSTOMER,
+  })
+  @IsNotEmpty({ message: '角色类型不能为空' })
+  @IsEnum(RoleType, { message: '无效的角色类型' })
+  roleType: RoleType;
 }
 
 // ============ 验证码相关DTO ============
 export class SendVerificationCodeDto {
-  @ApiProperty({
-    description: '验证码发送类型',
-    enum: VerificationCodeType,
-    enumName: 'VerificationCodeType',
-    example: VerificationCodeType.EMAIL,
-  })
-  @IsEnum(VerificationCodeType, { message: '无效的验证码类型' })
-  type: VerificationCodeType;
-
   @ApiPropertyOptional({
-    description: '邮箱地址（当type为EMAIL时必填）',
+    description: '邮箱地址',
     example: 'john@example.com',
   })
-  @IsOptional()
+  @ValidateIf((o) => !o.phone)
   @IsEmail({}, { message: '请输入有效的邮箱地址' })
   email?: string;
 
   @ApiPropertyOptional({
-    description: '手机号码（当type为PHONE时必填）',
+    description: '手机号码',
     example: '+8613800138000',
   })
-  @IsOptional()
+  @ValidateIf((o) => !o.email)
   @IsPhoneNumber('CN', { message: '请输入有效的手机号码' })
   phone?: string;
 
@@ -215,6 +245,15 @@ export class SendVerificationCodeDto {
   })
   @IsEnum(VerificationCodePurpose, { message: '无效的验证码用途' })
   purpose: VerificationCodePurpose;
+
+  @ApiPropertyOptional({
+    description: '用户角色类型（用于注册时）',
+    enum: RoleType,
+    example: RoleType.CUSTOMER,
+  })
+  @IsOptional()
+  @IsEnum(RoleType, { message: '无效的角色类型' })
+  roleType?: RoleType;
 }
 
 // ============ 令牌相关DTO ============

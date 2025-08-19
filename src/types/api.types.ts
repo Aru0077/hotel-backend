@@ -41,41 +41,22 @@ export class ApiResponseDto<T = unknown> {
 }
 
 export class PaginatedResponseDto<T = unknown> {
-  @ApiProperty({
-    type: [Object],
-    isArray: true,
-    description: '数据列表',
-  })
+  @ApiProperty({ description: '数据列表', isArray: true })
   data: T[];
 
-  @ApiProperty({
-    example: 100,
-    description: '总记录数',
-  })
+  @ApiProperty({ example: 100, description: '总记录数' })
   total: number;
 
-  @ApiProperty({
-    example: 1,
-    description: '当前页码',
-  })
+  @ApiProperty({ example: 1, description: '当前页码' })
   page: number;
 
-  @ApiProperty({
-    example: 10,
-    description: '每页大小',
-  })
+  @ApiProperty({ example: 10, description: '每页大小' })
   limit: number;
 
-  @ApiProperty({
-    example: true,
-    description: '是否有下一页',
-  })
+  @ApiProperty({ example: true, description: '是否有下一页' })
   hasNext: boolean;
 
-  @ApiProperty({
-    example: false,
-    description: '是否有上一页',
-  })
+  @ApiProperty({ example: false, description: '是否有上一页' })
   hasPrev: boolean;
 }
 
@@ -87,60 +68,9 @@ export interface PaginationParams {
   sortOrder?: 'asc' | 'desc';
 }
 
-// ============ 查询过滤器 ============
-export interface BaseFilter {
-  createdAt?: {
-    from?: Date;
-    to?: Date;
-  };
-  updatedAt?: {
-    from?: Date;
-    to?: Date;
-  };
-}
-
 // ============ 基础实体接口 ============
 export interface BaseEntity {
   id: number;
   createdAt: Date;
   updatedAt: Date;
-}
-
-// ============ 文件上传类型 ============
-export interface FileUploadResponse {
-  filename: string;
-  originalName: string;
-  mimetype: string;
-  size: number;
-  path: string;
-  url?: string;
-}
-
-// ============ 批量操作类型 ============
-export interface BatchOperationResult {
-  total: number;
-  success: number;
-  failed: number;
-  errors?: Array<{
-    index: number;
-    error: string;
-  }>;
-}
-
-// ============ 搜索相关类型 ============
-export interface SearchParams extends PaginationParams {
-  keyword?: string;
-  filters?: Record<string, unknown>;
-}
-
-export interface SearchResult<T> extends PaginatedResponse<T> {
-  keyword?: string;
-  searchTime: number;
-}
-
-// ============ 健康检查类型 ============
-export interface HealthStatus {
-  status: 'up' | 'down';
-  timestamp: string;
-  details?: Record<string, unknown>;
 }

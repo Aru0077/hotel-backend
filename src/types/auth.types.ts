@@ -1,6 +1,6 @@
 // src/types/auth.types.ts
-import { UserWithRoles } from './core.types';
 import { RoleType } from '@prisma/client';
+import { UserWithRoles } from './core.types';
 
 // ============ JWT相关类型 ============
 export interface JwtPayload {
@@ -8,7 +8,7 @@ export interface JwtPayload {
   username?: string;
   email?: string;
   phone?: string;
-  roles: RoleType[]; // 更改为使用RoleType枚举数组
+  roles: RoleType[];
   iat?: number;
   exp?: number;
   jti?: string;
@@ -26,7 +26,7 @@ export interface RefreshTokenPayload {
 export interface AuthTokenResponse {
   accessToken: string;
   refreshToken: string;
-  expiresIn: string;
+  expiresIn: number;
   tokenType: 'Bearer';
   user: UserWithRoles;
 }
@@ -36,7 +36,7 @@ export interface AuthUserInfo {
   username?: string;
   email?: string;
   phone?: string;
-  roles: RoleType[]; // 更改为使用RoleType枚举数组
+  roles: RoleType[];
   isEmailVerified: boolean;
   isPhoneVerified: boolean;
   lastLoginAt?: Date;
@@ -61,21 +61,6 @@ export interface VerificationCodeData {
   expiresAt: Date;
 }
 
-// ============ 短信服务类型 ============
-export interface SmsResponse {
-  success: boolean;
-  bizId?: string;
-  message?: string;
-  code?: string;
-}
-
-export interface SendSmsOptions {
-  phoneNumber: string;
-  templateCode: string;
-  templateParam: Record<string, string>;
-  signName?: string;
-}
-
 // ============ 服务结果类型 ============
 export interface ServiceError {
   code: string;
@@ -86,11 +71,3 @@ export interface ServiceError {
 export type ServiceResult<T> =
   | { success: true; data: T }
   | { success: false; error: ServiceError };
-
-// ============ 认证操作类型 ============
-export type CredentialType =
-  | 'username'
-  | 'email'
-  | 'phone'
-  | 'facebook'
-  | 'google';

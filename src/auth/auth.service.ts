@@ -16,8 +16,8 @@ import {
   UsernamePasswordRegisterDto,
   EmailCodeRegisterDto,
   PhoneCodeRegisterDto,
-  FacebookRegisterDto,
-  GoogleRegisterDto,
+  // FacebookRegisterDto,
+  // GoogleRegisterDto,
   EmailCodeLoginDto,
   PhoneCodeLoginDto,
   SendVerificationCodeDto,
@@ -26,7 +26,8 @@ import {
 import {
   AuthTokenResponse,
   JwtPayload,
-  SocialUserInfo,
+  RefreshTokenPayload,
+  // SocialUserInfo,
   UserWithCredentials,
   UserWithRoles,
   VerificationCodeType,
@@ -274,34 +275,34 @@ export class AuthService {
   /**
    * Facebook注册
    */
-  async registerWithFacebook(
-    dto: FacebookRegisterDto,
-  ): Promise<AuthTokenResponse> {
-    // 1. 验证Facebook令牌
-    // 2. 获取Facebook用户信息
-    // 3. 验证Facebook ID是否已存在
-    // 4. 创建用户记录
-    // 5. 创建认证凭证记录，标记Facebook已验证
-    // 6. 创建用户角色记录
-    // 7. 生成JWT令牌
-    // 8. 返回认证响应
-    throw new Error('方法未实现');
-  }
+  // async registerWithFacebook(
+  //   dto: FacebookRegisterDto,
+  // ): Promise<AuthTokenResponse> {
+  //   // 1. 验证Facebook令牌
+  //   // 2. 获取Facebook用户信息
+  //   // 3. 验证Facebook ID是否已存在
+  //   // 4. 创建用户记录
+  //   // 5. 创建认证凭证记录，标记Facebook已验证
+  //   // 6. 创建用户角色记录
+  //   // 7. 生成JWT令牌
+  //   // 8. 返回认证响应
+  //   throw new Error('方法未实现');
+  // }
 
   /**
    * Google注册
    */
-  async registerWithGoogle(dto: GoogleRegisterDto): Promise<AuthTokenResponse> {
-    // 1. 验证Google令牌
-    // 2. 获取Google用户信息
-    // 3. 验证Google ID是否已存在
-    // 4. 创建用户记录
-    // 5. 创建认证凭证记录，标记Google已验证
-    // 6. 创建用户角色记录
-    // 7. 生成JWT令牌
-    // 8. 返回认证响应
-    throw new Error('方法未实现');
-  }
+  // async registerWithGoogle(dto: GoogleRegisterDto): Promise<AuthTokenResponse> {
+  //   // 1. 验证Google令牌
+  //   // 2. 获取Google用户信息
+  //   // 3. 验证Google ID是否已存在
+  //   // 4. 创建用户记录
+  //   // 5. 创建认证凭证记录，标记Google已验证
+  //   // 6. 创建用户角色记录
+  //   // 7. 生成JWT令牌
+  //   // 8. 返回认证响应
+  //   throw new Error('方法未实现');
+  // }
 
   // ============ 登录相关方法 ============
 
@@ -499,12 +500,12 @@ export class AuthService {
   /**
    * 验证或创建社交媒体用户（用于FacebookStrategy和GoogleStrategy）
    */
-  async validateOrCreateSocialUser(
-    provider: 'facebook' | 'google',
-    userInfo: SocialUserInfo,
-  ): Promise<UserWithRoles> {
-    throw new Error(`社交媒体登录功能尚未实现: ${provider}`);
-  }
+  // async validateOrCreateSocialUser(
+  //   provider: 'facebook' | 'google',
+  //   userInfo: SocialUserInfo,
+  // ): Promise<UserWithRoles> {
+  //   throw new Error(`社交媒体登录功能尚未实现: ${provider}`);
+  // }
 
   // ============ 验证码相关方法 ============
 
@@ -674,27 +675,32 @@ export class AuthService {
    */
   async refreshToken(dto: RefreshTokenDto): Promise<AuthTokenResponse> {
     try {
-      // 1. 验证刷新令牌格式
-      const payload = await this.jwtService.verifyAsync(dto.refreshToken, {
-        secret: this.configService.jwt.refreshSecret,
-      });
+      // 1. 验证刷新令牌格式并获取类型安全的 payload
+      const payload = await this.jwtService.verifyAsync<RefreshTokenPayload>(
+        dto.refreshToken,
+        {
+          secret: this.configService.jwt.refreshSecret,
+        },
+      );
 
+      // 2. 验证令牌类型
       if (payload.type !== 'refresh') {
         throw new UnauthorizedException('无效的刷新令牌类型');
       }
-      // 2. 从Redis验证刷新令牌有效性
+
+      // 3. 从 payload 中获取用户ID（现在是类型安全的）
       const userId = payload.sub;
-      const refreshTokenPattern = `refresh_token:${userId}:*`;
-      // 3. 解析令牌获取用户信息
-      // 这里简化处理，实际可以使用Redis的SCAN命令遍历匹配的键
-      // 由于Redis服务没有提供pattern匹配方法，我们使用用户ID作为键
+
+      // 4. 从Redis验证刷新令牌有效性
+      // 使用用户ID作为键进行简化处理
       const userRefreshTokenKey = `refresh_token:${userId}:current`;
       const storedToken = await this.redis.get(userRefreshTokenKey);
 
       if (!storedToken || storedToken !== dto.refreshToken) {
         throw new UnauthorizedException('刷新令牌无效或已过期');
       }
-      // 4. 查找用户确认仍然有效
+
+      // 5. 查找用户确认仍然有效
       const user = await this.prisma.user.findUnique({
         where: { id: userId },
         include: {
@@ -704,19 +710,23 @@ export class AuthService {
           },
         },
       });
+
       if (!user || user.roles.length === 0) {
         throw new UnauthorizedException('用户不存在或状态异常');
       }
-      // 5. 生成新的访问令牌和刷新令牌
-      const token = await this.generateTokens(user);
-      // 6. 更新Redis中的刷新令牌
+
+      // 6. 生成新的访问令牌和刷新令牌
+      const tokens = await this.generateTokens(user);
+
+      // 7. 更新Redis中的刷新令牌
       await this.redis.set(
         userRefreshTokenKey,
-        token.refreshToken,
+        tokens.refreshToken,
         this.parseExpirationTime(this.configService.jwt.refreshExpiresIn),
       );
-      // 7. 返回新的认证响应
-      return this.formatAuthResponse(token, user);
+
+      // 8. 返回新的认证响应
+      return this.formatAuthResponse(tokens, user);
     } catch (error) {
       if (error instanceof UnauthorizedException) {
         throw error;
@@ -743,22 +753,22 @@ export class AuthService {
   /**
    * 验证Facebook令牌
    */
-  async validateFacebookToken(token: string): Promise<SocialUserInfo> {
-    // 1. 调用Facebook Graph API验证令牌
-    // 2. 获取用户基本信息
-    // 3. 格式化返回用户信息
-    throw new Error('方法未实现');
-  }
+  // async validateFacebookToken(token: string): Promise<SocialUserInfo> {
+  //   // 1. 调用Facebook Graph API验证令牌
+  //   // 2. 获取用户基本信息
+  //   // 3. 格式化返回用户信息
+  //   throw new Error('方法未实现');
+  // }
 
   /**
    * 验证Google令牌
    */
-  async validateGoogleToken(token: string): Promise<SocialUserInfo> {
-    // 1. 调用Google API验证令牌
-    // 2. 获取用户基本信息
-    // 3. 格式化返回用户信息
-    throw new Error('方法未实现');
-  }
+  // async validateGoogleToken(token: string): Promise<SocialUserInfo> {
+  //   // 1. 调用Google API验证令牌
+  //   // 2. 获取用户基本信息
+  //   // 3. 格式化返回用户信息
+  //   throw new Error('方法未实现');
+  // }
 
   // ============ 辅助方法 ============
 

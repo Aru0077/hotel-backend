@@ -44,3 +44,11 @@ export interface SocialUserInfo {
   picture?: string;
   provider: 'facebook' | 'google';
 }
+
+export interface RefreshTokenPayload {
+  sub: number;
+  type: 'refresh';
+  iat: number;
+  exp?: number;
+  jti?: string;
+}

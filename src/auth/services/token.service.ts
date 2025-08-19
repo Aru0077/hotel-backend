@@ -3,7 +3,7 @@ import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { RedisService } from '../../redis/redis.service';
 import { AppConfigService } from '../../config/config.service';
-import { RefreshTokenDto } from '../dto';
+import { RefreshTokenDto } from '../dto/auth.dto';
 import {
   AuthTokenResponse,
   JwtPayload,

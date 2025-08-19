@@ -3,7 +3,7 @@ import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { RedisService } from '../../redis/redis.service';
 import { AppConfigService } from '../../config/config.service';
 import { SmsService } from '../../sms/sms.service';
-import { SendVerificationCodeDto } from '../dto';
+import { SendVerificationCodeDto } from '../dto/auth.dto';
 import { VerificationCodeType } from '../../types';
 
 @Injectable()

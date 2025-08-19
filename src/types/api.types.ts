@@ -1,0 +1,146 @@
+// src/types/api.types.ts
+import { ApiProperty } from '@nestjs/swagger';
+
+// ============ API响应基础类型 ============
+export interface ApiResponse<T = unknown> {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  data: T;
+  timestamp: string;
+}
+
+export interface PaginatedResponse<T> {
+  data: T[];
+  total: number;
+  page: number;
+  limit: number;
+  hasNext: boolean;
+  hasPrev: boolean;
+}
+
+// ============ Swagger装饰器用DTO类 ============
+export class ApiResponseDto<T = unknown> {
+  @ApiProperty({ example: true, description: '请求是否成功' })
+  success: boolean;
+
+  @ApiProperty({ example: 200, description: 'HTTP状态码' })
+  statusCode: number;
+
+  @ApiProperty({ example: '操作成功', description: '响应消息' })
+  message: string;
+
+  @ApiProperty({ description: '响应数据' })
+  data: T;
+
+  @ApiProperty({
+    example: '2025-01-01T00:00:00.000Z',
+    description: '响应时间戳',
+  })
+  timestamp: string;
+}
+
+export class PaginatedResponseDto<T = unknown> {
+  @ApiProperty({
+    type: [Object],
+    isArray: true,
+    description: '数据列表',
+  })
+  data: T[];
+
+  @ApiProperty({
+    example: 100,
+    description: '总记录数',
+  })
+  total: number;
+
+  @ApiProperty({
+    example: 1,
+    description: '当前页码',
+  })
+  page: number;
+
+  @ApiProperty({
+    example: 10,
+    description: '每页大小',
+  })
+  limit: number;
+
+  @ApiProperty({
+    example: true,
+    description: '是否有下一页',
+  })
+  hasNext: boolean;
+
+  @ApiProperty({
+    example: false,
+    description: '是否有上一页',
+  })
+  hasPrev: boolean;
+}
+
+// ============ 分页查询参数 ============
+export interface PaginationParams {
+  page?: number;
+  limit?: number;
+  sortBy?: string;
+  sortOrder?: 'asc' | 'desc';
+}
+
+// ============ 查询过滤器 ============
+export interface BaseFilter {
+  createdAt?: {
+    from?: Date;
+    to?: Date;
+  };
+  updatedAt?: {
+    from?: Date;
+    to?: Date;
+  };
+}
+
+// ============ 基础实体接口 ============
+export interface BaseEntity {
+  id: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// ============ 文件上传类型 ============
+export interface FileUploadResponse {
+  filename: string;
+  originalName: string;
+  mimetype: string;
+  size: number;
+  path: string;
+  url?: string;
+}
+
+// ============ 批量操作类型 ============
+export interface BatchOperationResult {
+  total: number;
+  success: number;
+  failed: number;
+  errors?: Array<{
+    index: number;
+    error: string;
+  }>;
+}
+
+// ============ 搜索相关类型 ============
+export interface SearchParams extends PaginationParams {
+  keyword?: string;
+  filters?: Record<string, unknown>;
+}
+
+export interface SearchResult<T> extends PaginatedResponse<T> {
+  keyword?: string;
+  searchTime: number;
+}
+
+// ============ 健康检查类型 ============
+export interface HealthStatus {
+  status: 'up' | 'down';
+  timestamp: string;
+  details?: Record<string, unknown>;
+}

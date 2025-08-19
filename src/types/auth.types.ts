@@ -1,8 +1,7 @@
-// ===============================
 // src/types/auth.types.ts
-// ===============================
-import { Prisma } from '@prisma/client';
+import { UserWithRoles } from './core.types';
 
+// ============ JWT相关类型 ============
 export interface JwtPayload {
   sub: number;
   username?: string;
@@ -11,17 +10,24 @@ export interface JwtPayload {
   roles: string[];
   iat?: number;
   exp?: number;
-  jti?: string; // JWT ID，用于令牌撤销
+  jti?: string;
 }
 
+export interface RefreshTokenPayload {
+  sub: number;
+  type: 'refresh';
+  iat: number;
+  exp?: number;
+  jti?: string;
+}
+
+// ============ 认证响应类型 ============
 export interface AuthTokenResponse {
   accessToken: string;
   refreshToken: string;
   expiresIn: string;
   tokenType: 'Bearer';
-  user: Prisma.UserGetPayload<{
-    include: { credentials: true; roles: true };
-  }>;
+  user: UserWithRoles;
 }
 
 export interface AuthUserInfo {
@@ -35,6 +41,7 @@ export interface AuthUserInfo {
   lastLoginAt?: Date;
 }
 
+// ============ 社交登录类型 ============
 export interface SocialUserInfo {
   id: string;
   email?: string;
@@ -45,10 +52,44 @@ export interface SocialUserInfo {
   provider: 'facebook' | 'google';
 }
 
-export interface RefreshTokenPayload {
-  sub: number;
-  type: 'refresh';
-  iat: number;
-  exp?: number;
-  jti?: string;
+// ============ 验证码相关类型 ============
+export interface VerificationCodeData {
+  identifier: string;
+  code: string;
+  purpose: string;
+  expiresAt: Date;
 }
+
+// ============ 短信服务类型 ============
+export interface SmsResponse {
+  success: boolean;
+  bizId?: string;
+  message?: string;
+  code?: string;
+}
+
+export interface SendSmsOptions {
+  phoneNumber: string;
+  templateCode: string;
+  templateParam: Record<string, string>;
+  signName?: string;
+}
+
+// ============ 服务结果类型 ============
+export interface ServiceError {
+  code: string;
+  message: string;
+  details?: unknown;
+}
+
+export type ServiceResult<T> =
+  | { success: true; data: T }
+  | { success: false; error: ServiceError };
+
+// ============ 认证操作类型 ============
+export type CredentialType =
+  | 'username'
+  | 'email'
+  | 'phone'
+  | 'facebook'
+  | 'google';

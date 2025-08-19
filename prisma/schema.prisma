@@ -65,34 +65,21 @@ model User {
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
   lastLoginAt DateTime? @map("last_login_at")
+  role        RoleType  @map("role_type") // 直接标识用户角色
 
-  // 关联关系
-  roles       UserRole[]
-  credentials AuthCredential? // 认证凭证  一对一关联
+  // 添加关联外键字段
+  merchantId Int? @unique @map("merchant_id")
+  customerId Int? @unique @map("customer_id")
+  adminId    Int? @unique @map("admin_id")
 
+  // 关联关系 - 移除了 fields 和 references 参数
+  credentials AuthCredential?
+  merchant    Merchant?
+  customer    Customer?
+  admin       Admin?
+
+  @@index([role])
   @@map("users")
-}
-
-// 用户角色表
-model UserRole {
-  id        Int        @id @default(autoincrement())
-  userId    Int        @map("user_id")
-  roleType  RoleType   @map("role_type") // 改为使用枚举类型
-  status    RoleStatus @default(ACTIVE)
-  createdAt DateTime   @default(now()) @map("created_at")
-  expiresAt DateTime?  @map("expires_at")
-
-  // 关联关系
-  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  merchant Merchant?
-  customer Customer?
-  admin    Admin?
-
-  @@unique([userId, roleType])
-  @@index([userId])
-  @@index([roleType])
-  @@index([status])
-  @@map("user_roles")
 }
 
 // 认证凭证表 - 重新设计为一对一，包含所有身份标识符
@@ -146,7 +133,7 @@ model AuthCredential {
 // 商家信息表 - 通过角色表关联支持多个商家身份
 model Merchant {
   id                 Int                  @id @default(autoincrement())
-  userRoleId         Int                  @unique @map("user_role_id")
+  userId             Int                  @unique @map("user_id")
   businessName       String               @map("business_name")
   businessLicense    String?              @map("business_license")
   contactPerson      String               @map("contact_person")
@@ -159,7 +146,7 @@ model Merchant {
   updatedAt          DateTime             @updatedAt @map("updated_at")
 
   // 关联关系
-  userRole UserRole @relation(fields: [userRoleId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([verificationStatus])
   @@index([businessType])
@@ -169,7 +156,7 @@ model Merchant {
 // 客户信息表
 model Customer {
   id               Int       @id @default(autoincrement())
-  userRoleId       Int       @unique @map("user_role_id")
+  userId           Int       @unique @map("user_id")
   realName         String?   @map("real_name")
   idCard           String?   @unique @map("id_card")
   birthDate        DateTime? @map("birth_date") @db.Date
@@ -181,7 +168,7 @@ model Customer {
   updatedAt        DateTime  @updatedAt @map("updated_at")
 
   // 关联关系 - 现在字段名称匹配
-  userRole UserRole @relation(fields: [userRoleId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([realName])
   @@index([gender])
@@ -191,7 +178,7 @@ model Customer {
 // 管理员信息表 - 直接与用户表一对一关联
 model Admin {
   id         Int       @id @default(autoincrement())
-  userRoleId Int       @unique @map("user_role_id")
+  userId     Int       @unique @map("user_id")
   employeeId String    @unique @map("employee_id") // 员工编号
   hireDate   DateTime? @map("hire_date") @db.Date // 入职日期
   isActive   Boolean   @default(true) @map("is_active") // 是否在职
@@ -199,10 +186,9 @@ model Admin {
   updatedAt  DateTime  @updatedAt @map("updated_at")
 
   // 关联关系
-  userRole     UserRole        @relation(fields: [userRoleId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([employeeId])
   @@index([isActive])
   @@map("admins")
 }
-

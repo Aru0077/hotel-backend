@@ -6,7 +6,7 @@ import { UserWithRoles } from './core.types';
 // ============ 核心类型导出 ============
 export {
   // Prisma枚举
-  RoleType, // 新增RoleType导出
+  RoleType,
   RoleStatus,
   AuthProvider,
   MerchantVerifyStatus,

@@ -14,6 +14,7 @@ import {
   EmailLoginDto,
   PhoneLoginDto,
   SendVerificationCodeDto,
+  LogoutDto,
 } from './dto/auth.dto';
 import {
   AuthTokenResponse,
@@ -22,6 +23,7 @@ import {
   CreateUserData,
   VerificationCodeType,
   VerificationCodePurpose,
+  CurrentUser,
 } from '../types';
 import { PasswordService } from './services/password.service';
 import { VerificationCodeService } from './services/verification-code.service';
@@ -264,14 +266,71 @@ export class AuthService {
 
   /**
    * 用户注销 - 完整实现
-   * @param request - 包含用户信息和JWT的请求对象
-   * @param refreshToken - 可选的刷新令牌
+   * @param currentUser - 当前用户信息
+   * @param dto - 可选的注销参数（包含刷新令牌）
    */
-  async logout(): Promise<{ success: boolean; message: string }> {
-    return {
-      success: false,
-      message: '注销失败，请稍后重试',
-    };
+  async logout(
+    currentUser: CurrentUser,
+    dto?: LogoutDto,
+  ): Promise<{ success: boolean; message: string }> {
+    try {
+      const userId = currentUser.userId;
+
+      // 1. 将当前访问令牌加入黑名单（如果有jti）
+      if (currentUser.jti) {
+        // 计算token过期时间（假设是15分钟，与配置一致）
+        const expiresAt = Math.floor(Date.now() / 1000) + 15 * 60;
+        await this.tokenService.addToBlacklist(currentUser.jti, expiresAt);
+        this.logger.log(
+          `访问令牌已加入黑名单: userId=${userId}, jti=${currentUser.jti}`,
+        );
+      }
+
+      // 2. 清除刷新令牌
+      if (dto?.refreshToken) {
+        // 如果提供了刷新令牌，验证后清除
+        try {
+          const payload = await this.tokenService.verifyRefreshToken(
+            dto.refreshToken,
+          );
+          if (payload.sub === userId) {
+            await this.tokenService.logout(userId);
+            this.logger.log(`指定刷新令牌已清除: userId=${userId}`);
+          }
+        } catch (error) {
+          // 即使刷新令牌验证失败，也继续清除用户的所有令牌
+          this.logger.warn(
+            `刷新令牌验证失败，清除用户所有令牌: userId=${userId}`,
+            error,
+          );
+          await this.tokenService.logout(userId);
+        }
+      } else {
+        // 如果没有提供刷新令牌，清除该用户的所有刷新令牌
+        await this.tokenService.logout(userId);
+        this.logger.log(`用户所有令牌已清除: userId=${userId}`);
+      }
+
+      // 3. 更新用户最后登录时间为null（可选，表示已注销）
+      // 这里可以选择是否更新，根据业务需求决定
+      // await this.userService.updateLastLoginTime(userId, null);
+
+      this.logger.log(
+        `用户注销成功: userId=${userId}, username=${currentUser.username}`,
+      );
+
+      return {
+        success: true,
+        message: '注销成功',
+      };
+    } catch (error) {
+      this.logger.error(`用户注销失败: userId=${currentUser?.userId}`, error);
+
+      return {
+        success: false,
+        message: '注销失败，请稍后重试',
+      };
+    }
   }
 
   // ============ 私有方法 ============

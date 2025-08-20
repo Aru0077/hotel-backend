@@ -33,6 +33,7 @@ export {
   VerificationCodeData,
   ServiceError,
   ServiceResult,
+  CurrentUser,
 } from './auth.types';
 
 // API类型导出

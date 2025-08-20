@@ -6,7 +6,6 @@ import {
   HttpStatus,
   UseGuards,
   Body,
-  Req,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -29,7 +28,8 @@ import {
   LogoutDto,
 } from './dto/auth.dto';
 import { AuthService } from './auth.service';
-import { AuthTokenResponse } from '../types';
+import { AuthTokenResponse, CurrentUser } from '../types';
+import { GetCurrentUser } from '@common/decorators/current-user.decorator';
 
 @ApiTags('认证')
 @Controller('auth')
@@ -176,7 +176,10 @@ export class AuthController {
   @ApiResponse({ status: 200, description: '注销成功' })
   @ApiResponse({ status: 401, description: '未授权' })
   @ApiResponse({ status: 400, description: '注销失败' })
-  async logout(): Promise<{ success: boolean; message: string }> {
-    return this.authService.logout();
+  async logout(
+    @GetCurrentUser() currentUser: CurrentUser,
+    @Body() dto?: LogoutDto,
+  ): Promise<{ success: boolean; message: string }> {
+    return this.authService.logout(currentUser, dto);
   }
 }

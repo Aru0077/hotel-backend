@@ -23,6 +23,9 @@ import { TokenService } from './services/token.service';
 import { FacebookAuthGuard } from './guards/facebook-auth.guard';
 import { GoogleAuthGuard } from './guards/google-auth.guard';
 import { LocalAuthGuard } from './guards/local-auth.guard';
+import { CustomerAuthController } from './customer-auth.controller';
+import { AdminAuthController } from './admin-auth.controller';
+import { MerchantAuthController } from './merchant-auth.controller';
 
 @Module({
   imports: [
@@ -39,7 +42,12 @@ import { LocalAuthGuard } from './guards/local-auth.guard';
       }),
     }),
   ],
-  controllers: [AuthController],
+  controllers: [
+    AuthController,
+    AdminAuthController,
+    CustomerAuthController,
+    MerchantAuthController,
+  ],
   providers: [
     // 核心认证服务
     AuthService,

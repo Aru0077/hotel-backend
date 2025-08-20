@@ -8,28 +8,33 @@ import { AppConfigService } from '../config/config.service';
 // Passport 策略
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { LocalStrategy } from './strategies/local.strategy';
-// import { FacebookStrategy } from './strategies/facebook.strategy';
-// import { GoogleStrategy } from './strategies/google.strategy';
-import { AuthService } from './auth.service';
 
-import { FacebookAuthGuard } from './guards/facebook-auth.guard';
-import { GoogleAuthGuard } from './guards/google-auth.guard';
-import { LocalAuthGuard } from './guards/local-auth.guard';
+// 认证服务
+import { AuthService } from './services/auth.service';
+import { RegistrationService } from './services/registration.service';
+import { LoginService } from './services/login.service';
+
+// 专门化服务
 import { PasswordService } from './services/password.service';
 import { VerificationCodeService } from './services/verification-code.service';
 import { TokenService } from './services/token.service';
 
+// Guards
+import { FacebookAuthGuard } from './guards/facebook-auth.guard';
+import { GoogleAuthGuard } from './guards/google-auth.guard';
+import { LocalAuthGuard } from './guards/local-auth.guard';
+
 @Module({
   imports: [
-    PassportModule.register({ defaultStrategy: 'jwt', session: false }), // 使用无状态JWT，不需要session
+    PassportModule.register({ defaultStrategy: 'jwt', session: false }),
     JwtModule.registerAsync({
       inject: [AppConfigService],
       useFactory: (configService: AppConfigService) => ({
         secret: configService.jwt.secret,
         signOptions: {
           expiresIn: configService.jwt.expiresIn,
-          issuer: 'hotel-management-system', // 添加发行者标识
-          audience: 'hotel-users', // 添加受众标识
+          issuer: 'hotel-management-system',
+          audience: 'hotel-users',
         },
       }),
     }),
@@ -38,20 +43,17 @@ import { TokenService } from './services/token.service';
   providers: [
     // 核心认证服务
     AuthService,
+    RegistrationService,
+    LoginService,
 
     // 专门化服务
-    // 密码服务
     PasswordService,
-    // 验证码服务
     VerificationCodeService,
-    // Token黑名单
     TokenService,
 
     // Passport策略
     JwtStrategy,
     LocalStrategy,
-    // FacebookStrategy,
-    // GoogleStrategy,
 
     // Guards
     LocalAuthGuard,
@@ -62,6 +64,8 @@ import { TokenService } from './services/token.service';
     PassportModule,
     JwtModule,
     AuthService,
+    RegistrationService,
+    LoginService,
     PasswordService,
     VerificationCodeService,
     TokenService,

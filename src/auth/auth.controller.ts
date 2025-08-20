@@ -27,14 +27,22 @@ import {
   RefreshTokenDto,
   LogoutDto,
 } from './dto/auth.dto';
-import { AuthService } from './auth.service';
-import { AuthTokenResponse, CurrentUser } from '../types';
+import { AuthService } from './services/auth.service';
+import { RegistrationService } from './services/registration.service';
+import { LoginService } from './services/login.service';
+import { VerificationCodeService } from './services/verification-code.service';
+import { AuthTokenResponse, CurrentUser, VerificationCodeType } from '../types';
 import { GetCurrentUser } from '@common/decorators/current-user.decorator';
 
 @ApiTags('认证')
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly registrationService: RegistrationService,
+    private readonly loginService: LoginService,
+    private readonly verificationCodeService: VerificationCodeService,
+  ) {}
 
   // ============ 注册接口 ============
 
@@ -51,7 +59,7 @@ export class AuthController {
   async registerWithUsernamePassword(
     @Body() dto: UsernamePasswordRegisterDto,
   ): Promise<AuthTokenResponse> {
-    return this.authService.registerWithUsernamePassword(dto);
+    return this.registrationService.registerWithUsernamePassword(dto);
   }
 
   /**
@@ -67,7 +75,7 @@ export class AuthController {
   async registerWithEmailCode(
     @Body() dto: EmailRegisterDto,
   ): Promise<AuthTokenResponse> {
-    return this.authService.registerWithEmailCode(dto);
+    return this.registrationService.registerWithEmailCode(dto);
   }
 
   /**
@@ -83,7 +91,7 @@ export class AuthController {
   async registerWithPhoneCode(
     @Body() dto: PhoneRegisterDto,
   ): Promise<AuthTokenResponse> {
-    return this.authService.registerWithPhoneCode(dto);
+    return this.registrationService.registerWithPhoneCode(dto);
   }
 
   // ============ 登录接口 ============
@@ -101,7 +109,7 @@ export class AuthController {
   async loginWithPassword(
     @Body() dto: PasswordLoginDto,
   ): Promise<AuthTokenResponse> {
-    return this.authService.loginWithPassword(dto);
+    return this.loginService.loginWithPassword(dto);
   }
 
   /**
@@ -116,7 +124,7 @@ export class AuthController {
   async loginWithEmailCode(
     @Body() dto: EmailLoginDto,
   ): Promise<AuthTokenResponse> {
-    return this.authService.loginWithEmailCode(dto);
+    return this.loginService.loginWithEmailCode(dto);
   }
 
   /**
@@ -131,7 +139,7 @@ export class AuthController {
   async loginWithPhoneCode(
     @Body() dto: PhoneLoginDto,
   ): Promise<AuthTokenResponse> {
-    return this.authService.loginWithPhoneCode(dto);
+    return this.loginService.loginWithPhoneCode(dto);
   }
 
   // ============ 辅助接口 ============
@@ -149,7 +157,22 @@ export class AuthController {
   async sendVerificationCode(
     @Body() dto: SendVerificationCodeDto,
   ): Promise<{ success: boolean; message: string }> {
-    return this.authService.sendVerificationCode(dto);
+    // 确定验证码类型
+    const type = dto.email
+      ? VerificationCodeType.EMAIL
+      : VerificationCodeType.PHONE;
+
+    // 构造验证码服务所需的参数
+    const verificationDto = {
+      ...dto,
+      type,
+    };
+
+    await this.verificationCodeService.sendVerificationCode(verificationDto);
+    return {
+      success: true,
+      message: '验证码发送成功',
+    };
   }
 
   /**

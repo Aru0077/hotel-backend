@@ -1,4 +1,4 @@
-// src/auth/auth.service.ts - 简化的统一认证服务
+// src/auth/auth.service.ts - 完整的认证服务
 import {
   Injectable,
   BadRequestException,
@@ -12,21 +12,22 @@ import {
   CreateUserData,
   CurrentUser,
   UserWithRoles,
+  CredentialType,
 } from '../types';
 import { PasswordService } from './services/password.service';
 import { TokenService } from './services/token.service';
 import { VerificationCodeService } from './services/verification-code.service';
-import { UserService } from '../user/user.service';
+import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
 
   constructor(
+    private readonly prisma: PrismaService,
     private readonly passwordService: PasswordService,
     private readonly tokenService: TokenService,
     private readonly verificationCodeService: VerificationCodeService,
-    private readonly userService: UserService,
   ) {}
 
   /**
@@ -36,9 +37,7 @@ export class AuthService {
     const identifierType = this.detectIdentifierType(dto.identifier);
 
     // 检查用户是否已存在
-    if (
-      await this.userService.checkUserExists(dto.identifier, identifierType)
-    ) {
+    if (await this.checkUserExists(dto.identifier, identifierType)) {
       throw new ConflictException('用户已存在');
     }
 
@@ -79,7 +78,7 @@ export class AuthService {
     };
 
     // 创建用户
-    const user = await this.userService.createUser(userData);
+    const user = await this.createUser(userData);
 
     // 清除验证码
     if (dto.verificationCode) {
@@ -121,7 +120,7 @@ export class AuthService {
         throw new BadRequestException('密码登录需要提供密码');
       }
 
-      user = await this.userService.findUserByIdentifier(dto.identifier);
+      user = await this.findUserByIdentifier(dto.identifier);
       if (!user?.credentials?.hashedPassword) {
         throw new UnauthorizedException('用户名、邮箱、手机号或密码错误');
       }
@@ -136,7 +135,7 @@ export class AuthService {
     }
 
     // 更新登录时间
-    await this.userService.updateLastLoginTime(user.id);
+    await this.updateLastLoginTime(user.id);
 
     this.logger.log(
       `用户登录成功: userId=${user.id}, 角色数量=${user.roles.length}`,
@@ -158,7 +157,7 @@ export class AuthService {
   async refreshToken(refreshToken: string): Promise<AuthTokenResponse> {
     try {
       const payload = await this.tokenService.verifyRefreshToken(refreshToken);
-      const user = await this.userService.findUserById(payload.sub);
+      const user = await this.findUserById(payload.sub);
 
       if (!user) {
         throw new UnauthorizedException('用户不存在');
@@ -195,7 +194,7 @@ export class AuthService {
     identifier: string,
     password: string,
   ): Promise<UserWithRoles | null> {
-    const user = await this.userService.findUserByIdentifier(identifier);
+    const user = await this.findUserByIdentifier(identifier);
     if (!user?.credentials?.hashedPassword) {
       return null;
     }
@@ -206,6 +205,197 @@ export class AuthService {
     );
 
     return isValid ? user : null;
+  }
+
+  // ============ 用户数据操作方法 ============
+
+  /**
+   * 检查用户是否存在
+   */
+  async checkUserExists(
+    identifier: string,
+    type: CredentialType,
+  ): Promise<boolean> {
+    const whereCondition = this.buildWhereCondition(identifier, type);
+    const credential = await this.prisma.authCredential.findFirst({
+      where: whereCondition,
+    });
+    return Boolean(credential);
+  }
+
+  /**
+   * 创建用户
+   */
+  async createUser(data: CreateUserData): Promise<UserWithRoles> {
+    this.validateCreateUserData(data);
+
+    const user = await this.prisma.$transaction(async (tx) => {
+      // 创建用户记录
+      const newUser = await tx.user.create({
+        data: {
+          lastLoginAt: new Date(),
+        },
+      });
+
+      // 创建认证凭证记录
+      await tx.authCredential.create({
+        data: {
+          userId: newUser.id,
+          username: data.username,
+          email: data.email,
+          phone: data.phone,
+          facebookId: data.facebookId,
+          googleId: data.googleId,
+          hashedPassword: data.hashedPassword,
+          isEmailVerified: data.isEmailVerified ?? false,
+          isPhoneVerified: data.isPhoneVerified ?? false,
+          isFacebookVerified: data.isFacebookVerified ?? false,
+          isGoogleVerified: data.isGoogleVerified ?? false,
+        },
+      });
+
+      // 创建用户角色记录
+      await tx.userRole.create({
+        data: {
+          userId: newUser.id,
+          roleType: data.roleType,
+          status: data.roleStatus ?? 'ACTIVE',
+          expiresAt: data.roleExpiresAt,
+        },
+      });
+
+      // 返回完整用户信息
+      return await tx.user.findUnique({
+        where: { id: newUser.id },
+        include: {
+          credentials: true,
+          roles: {
+            where: { status: 'ACTIVE' },
+            include: {
+              merchant: true,
+              customer: true,
+              admin: true,
+            },
+          },
+        },
+      });
+    });
+
+    if (!user) {
+      throw new Error('用户创建失败');
+    }
+
+    return user;
+  }
+
+  /**
+   * 根据标识符查找用户
+   */
+  async findUserByIdentifier(
+    identifier: string,
+  ): Promise<UserWithRoles | null> {
+    return await this.prisma.user.findFirst({
+      where: {
+        credentials: {
+          OR: [
+            { username: identifier },
+            { email: identifier },
+            { phone: identifier },
+          ],
+        },
+      },
+      include: {
+        credentials: true,
+        roles: {
+          where: { status: 'ACTIVE' },
+          include: {
+            merchant: true,
+            customer: true,
+            admin: true,
+          },
+        },
+      },
+    });
+  }
+
+  /**
+   * 根据邮箱查找用户
+   */
+  async findUserByEmail(email: string): Promise<UserWithRoles | null> {
+    return await this.prisma.user.findFirst({
+      where: {
+        credentials: { email },
+      },
+      include: {
+        credentials: true,
+        roles: {
+          where: { status: 'ACTIVE' },
+          include: {
+            merchant: true,
+            customer: true,
+            admin: true,
+          },
+        },
+      },
+    });
+  }
+
+  /**
+   * 根据手机号查找用户
+   */
+  async findUserByPhone(phone: string): Promise<UserWithRoles | null> {
+    return await this.prisma.user.findFirst({
+      where: {
+        credentials: { phone },
+      },
+      include: {
+        credentials: true,
+        roles: {
+          where: { status: 'ACTIVE' },
+          include: {
+            merchant: true,
+            customer: true,
+            admin: true,
+          },
+        },
+      },
+    });
+  }
+
+  /**
+   * 根据ID查找用户
+   */
+  async findUserById(userId: number): Promise<UserWithRoles | null> {
+    return await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        credentials: true,
+        roles: {
+          where: { status: 'ACTIVE' },
+          include: {
+            merchant: true,
+            customer: true,
+            admin: true,
+          },
+        },
+      },
+    });
+  }
+
+  /**
+   * 更新最后登录时间
+   */
+  async updateLastLoginTime(userId: number): Promise<void> {
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { lastLoginAt: new Date() },
+    });
+
+    // 同时更新认证凭证的最后登录时间
+    await this.prisma.authCredential.update({
+      where: { userId },
+      data: { lastLoginAt: new Date() },
+    });
   }
 
   // ============ 私有方法 ============
@@ -262,24 +452,6 @@ export class AuthService {
   }
 
   /**
-   * 根据标识符查找用户
-   */
-  private async findUserByIdentifier(
-    identifier: string,
-  ): Promise<UserWithRoles | null> {
-    const type = this.detectIdentifierType(identifier);
-
-    switch (type) {
-      case 'email':
-        return this.userService.findUserByEmail(identifier);
-      case 'phone':
-        return this.userService.findUserByPhone(identifier);
-      default:
-        return this.userService.findUserByIdentifier(identifier);
-    }
-  }
-
-  /**
    * 生成认证令牌
    */
   private async generateTokens(
@@ -313,6 +485,76 @@ export class AuthService {
           : identifier.slice(0, 1) + '***';
       default:
         return identifier.slice(0, 3) + '***';
+    }
+  }
+
+  /**
+   * 构建查询条件
+   */
+  private buildWhereCondition(
+    identifier: string,
+    type: CredentialType,
+  ): Record<string, string> {
+    const conditions: Record<CredentialType, string> = {
+      username: 'username',
+      email: 'email',
+      phone: 'phone',
+      facebook: 'facebookId',
+      google: 'googleId',
+    };
+
+    return { [conditions[type]]: identifier };
+  }
+
+  /**
+   * 验证创建用户数据
+   */
+  private validateCreateUserData(data: CreateUserData): void {
+    const hasIdentifier =
+      data.username ??
+      data.email ??
+      data.phone ??
+      data.facebookId ??
+      data.googleId;
+
+    if (!hasIdentifier) {
+      throw new BadRequestException('至少需要提供一个身份标识符');
+    }
+
+    if (data.username) this.validateUsername(data.username);
+    if (data.email) this.validateEmail(data.email);
+    if (data.phone) this.validatePhone(data.phone);
+  }
+
+  /**
+   * 验证用户名格式
+   */
+  private validateUsername(username: string): void {
+    const usernameRegex = /^[a-zA-Z0-9_]{3,50}$/;
+    if (!usernameRegex.test(username)) {
+      throw new BadRequestException(
+        '用户名格式不正确，只能包含字母、数字和下划线，长度3-50字符',
+      );
+    }
+  }
+
+  /**
+   * 验证邮箱格式
+   */
+  private validateEmail(email: string): void {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      throw new BadRequestException('邮箱格式不正确');
+    }
+  }
+
+  /**
+   * 验证手机号格式
+   */
+  private validatePhone(phone: string): void {
+    const phoneRegex = /^1[3-9]\d{9}$|^\+86[1-9]\d{10}$|^\+\d{1,3}\d{4,14}$/;
+    if (!phoneRegex.test(phone)) {
+      throw new BadRequestException('手机号码格式不正确');
     }
   }
 }

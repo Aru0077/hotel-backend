@@ -167,6 +167,7 @@ export class VerificationCodeService {
   ): Promise<void> {
     try {
       if (type === VerificationCodeType.PHONE) {
+        // 调用简化后的短信服务，不再需要传递用途参数
         const result = await this.smsService.sendVerificationCodeSms({
           phoneNumber: identifier,
           code,

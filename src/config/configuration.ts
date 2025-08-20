@@ -37,11 +37,7 @@ export const validationSchema = Joi.object({
   ALIBABA_CLOUD_ACCESS_KEY_SECRET: Joi.string().required(),
   ALIYUN_SMS_ENDPOINT: Joi.string().default('dysmsapi.aliyuncs.com'),
   ALIYUN_SMS_SIGN_NAME: Joi.string().required(),
-  ALIYUN_SMS_TEMPLATE_REGISTER: Joi.string().required(),
-  ALIYUN_SMS_TEMPLATE_LOGIN: Joi.string().required(),
-  ALIYUN_SMS_TEMPLATE_RESET_PASSWORD: Joi.string().required(),
-  ALIYUN_SMS_TEMPLATE_VERIFY_EMAIL: Joi.string().required(),
-  ALIYUN_SMS_TEMPLATE_VERIFY_PHONE: Joi.string().required(),
+  ALIYUN_SMS_TEMPLATE_VERIFY_CODE: Joi.string().required(),
 });
 
 export default (): AppConfig => {
@@ -120,11 +116,7 @@ export default (): AppConfig => {
         endpoint: process.env.ALIYUN_SMS_ENDPOINT ?? 'dysmsapi.aliyuncs.com',
         signName: process.env.ALIYUN_SMS_SIGN_NAME ?? '',
         templates: {
-          register: process.env.ALIYUN_SMS_TEMPLATE_REGISTER ?? '',
-          login: process.env.ALIYUN_SMS_TEMPLATE_LOGIN ?? '',
-          resetPassword: process.env.ALIYUN_SMS_TEMPLATE_RESET_PASSWORD ?? '',
-          verifyEmail: process.env.ALIYUN_SMS_TEMPLATE_VERIFY_EMAIL ?? '',
-          verifyPhone: process.env.ALIYUN_SMS_TEMPLATE_VERIFY_PHONE ?? '',
+          verifyCode: process.env.ALIYUN_SMS_TEMPLATE_VERIFY_CODE ?? '',
         },
       },
     },

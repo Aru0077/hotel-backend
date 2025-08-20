@@ -57,11 +57,7 @@ export interface AppConfig {
       endpoint: string;
       signName: string;
       templates: {
-        register: string;
-        login: string;
-        resetPassword: string;
-        verifyEmail: string;
-        verifyPhone: string;
+        verifyCode: string;
       };
     };
   };

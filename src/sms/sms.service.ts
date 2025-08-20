@@ -5,7 +5,6 @@ import * as $OpenApi from '@alicloud/openapi-client';
 import Credential from '@alicloud/credentials';
 import * as $Util from '@alicloud/tea-util';
 import { AppConfigService } from '../config/config.service';
-import { VerificationCodePurpose } from '../types';
 
 export interface SendSmsOptions {
   phoneNumber: string;
@@ -17,7 +16,6 @@ export interface SendSmsOptions {
 export interface SendVerificationCodeSmsOptions {
   phoneNumber: string;
   code: string;
-  purpose: VerificationCodePurpose;
 }
 
 export interface SmsResponse {
@@ -46,8 +44,6 @@ export class SmsService {
       const smsConfig = this.configService.aliyunSmsConfig;
 
       // 使用官方标准环境变量方式（推荐）
-      // 由于环境变量已设置为 ALIBABA_CLOUD_ACCESS_KEY_ID 和 ALIBABA_CLOUD_ACCESS_KEY_SECRET
-      // Credential 构造函数会自动读取这些标准环境变量
       const credential = new Credential();
 
       // 根据官方示例创建配置
@@ -79,7 +75,7 @@ export class SmsService {
     try {
       const smsConfig = this.configService.aliyunSmsConfig;
 
-      // 构建发送短信请求 - 按照官方示例
+      // 构建发送短信请求
       const sendSmsRequest = new $Dysmsapi20170525.SendSmsRequest({
         phoneNumbers: options.phoneNumber,
         signName: options.signName ?? smsConfig.signName,
@@ -87,10 +83,10 @@ export class SmsService {
         templateParam: JSON.stringify(options.templateParam),
       });
 
-      // 复制运行时选项 - 按照官方示例
+      // 复制运行时选项
       const runtime = new $Util.RuntimeOptions({});
 
-      // 发送短信 - 按照官方示例
+      // 发送短信
       const response = await this.client.sendSmsWithOptions(
         sendSmsRequest,
         runtime,
@@ -135,10 +131,13 @@ export class SmsService {
   async sendVerificationCodeSms(
     options: SendVerificationCodeSmsOptions,
   ): Promise<SmsResponse> {
-    const templateCode = this.getTemplateCodeByPurpose(options.purpose);
+    const smsConfig = this.configService.aliyunSmsConfig;
+
+    // 使用统一的验证码模板
+    const templateCode = smsConfig.templates.verifyCode;
 
     if (!templateCode) {
-      const errorMsg = `未找到对应用途的短信模板: ${options.purpose}`;
+      const errorMsg = '验证码短信模板未配置';
       this.logger.error(errorMsg);
       throw new BadRequestException(errorMsg);
     }
@@ -158,35 +157,11 @@ export class SmsService {
     if (result.success) {
       this.logger.log(
         `验证码短信发送成功: ${this.maskPhoneNumber(options.phoneNumber)}, ` +
-          `用途: ${options.purpose}, BizId: ${result.bizId}`,
+          `BizId: ${result.bizId}`,
       );
     }
 
     return result;
-  }
-
-  /**
-   * 根据用途获取短信模板代码
-   */
-  private getTemplateCodeByPurpose(
-    purpose: VerificationCodePurpose,
-  ): string | null {
-    const templates = this.configService.aliyunSmsConfig.templates;
-
-    switch (purpose) {
-      case VerificationCodePurpose.REGISTER:
-        return templates.register;
-      case VerificationCodePurpose.LOGIN:
-        return templates.login;
-      case VerificationCodePurpose.RESET_PASSWORD:
-        return templates.resetPassword;
-      case VerificationCodePurpose.VERIFY_EMAIL:
-        return templates.verifyEmail;
-      case VerificationCodePurpose.VERIFY_PHONE:
-        return templates.verifyPhone;
-      default:
-        return null;
-    }
   }
 
   /**
@@ -204,7 +179,6 @@ export class SmsService {
         error.stack,
       );
 
-      // 根据官方示例处理错误信息
       let errorMessage = error.message;
       let errorCode = 'UNKNOWN_ERROR';
 
@@ -250,7 +224,6 @@ export class SmsService {
       throw new BadRequestException('手机号码不能为空');
     }
 
-    // 基本的手机号格式验证
     const phoneRegex = /^1[3-9]\d{9}$|^\+86[1-9]\d{10}$|^\+\d{1,3}\d{4,14}$/;
     if (!phoneRegex.test(phoneNumber)) {
       throw new BadRequestException('手机号码格式不正确');
@@ -280,15 +253,11 @@ export class SmsService {
   private maskPhoneNumber(phoneNumber: string): string {
     if (!phoneNumber) return '';
 
-    // 处理不同格式的手机号
     if (phoneNumber.startsWith('+86')) {
-      // +8613812345678 -> +86138****5678
       return phoneNumber.replace(/(\+86\d{3})\d{4}(\d{4})/, '$1****$2');
     } else if (phoneNumber.startsWith('+')) {
-      // 其他国际号码 -> +1234****7890
       return phoneNumber.replace(/(\+\d{1,3}\d{2})\d*(\d{4})/, '$1****$2');
     } else {
-      // 国内号码 13812345678 -> 138****5678
       return phoneNumber.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2');
     }
   }

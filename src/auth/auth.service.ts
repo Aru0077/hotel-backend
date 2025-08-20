@@ -21,6 +21,7 @@ import {
   UserWithRoles,
   CreateUserData,
   VerificationCodeType,
+  VerificationCodePurpose,
 } from '../types';
 import { PasswordService } from './services/password.service';
 import { VerificationCodeService } from './services/verification-code.service';
@@ -67,7 +68,7 @@ export class AuthService {
     const isCodeValid = await this.verificationCodeService.verifyCode(
       dto.email,
       dto.verificationCode,
-      'register',
+      VerificationCodePurpose.REGISTER,
     );
     if (!isCodeValid) {
       throw new BadRequestException('验证码错误或已过期');
@@ -92,7 +93,7 @@ export class AuthService {
     const user = await this.userService.createUser(userData);
     await this.verificationCodeService.clearVerificationCode(
       dto.email,
-      'register',
+      VerificationCodePurpose.REGISTER,
     );
 
     return this.generateAuthResponse(user);
@@ -104,7 +105,7 @@ export class AuthService {
     const isCodeValid = await this.verificationCodeService.verifyCode(
       dto.phone,
       dto.verificationCode,
-      'register',
+      VerificationCodePurpose.REGISTER,
     );
     if (!isCodeValid) {
       throw new BadRequestException('验证码错误或已过期');
@@ -129,7 +130,7 @@ export class AuthService {
     const user = await this.userService.createUser(userData);
     await this.verificationCodeService.clearVerificationCode(
       dto.phone,
-      'register',
+      VerificationCodePurpose.REGISTER,
     );
 
     return this.generateAuthResponse(user);
@@ -180,7 +181,7 @@ export class AuthService {
     const isCodeValid = await this.verificationCodeService.verifyCode(
       dto.email,
       dto.verificationCode,
-      'login',
+      VerificationCodePurpose.LOGIN,
     );
     if (!isCodeValid) {
       throw new UnauthorizedException('验证码错误或已过期');
@@ -194,7 +195,7 @@ export class AuthService {
     await this.userService.updateLastLoginTime(user.id);
     await this.verificationCodeService.clearVerificationCode(
       dto.email,
-      'login',
+      VerificationCodePurpose.LOGIN,
     );
 
     return this.generateAuthResponse(user);
@@ -204,7 +205,7 @@ export class AuthService {
     const isCodeValid = await this.verificationCodeService.verifyCode(
       dto.phone,
       dto.verificationCode,
-      'login',
+      VerificationCodePurpose.LOGIN,
     );
     if (!isCodeValid) {
       throw new UnauthorizedException('验证码错误或已过期');
@@ -218,7 +219,7 @@ export class AuthService {
     await this.userService.updateLastLoginTime(user.id);
     await this.verificationCodeService.clearVerificationCode(
       dto.phone,
-      'login',
+      VerificationCodePurpose.LOGIN,
     );
 
     return this.generateAuthResponse(user);
@@ -259,7 +260,7 @@ export class AuthService {
     return await this.tokenService.refreshToken(dto, user);
   }
 
-  async logout(): Promise<{ success: boolean; message: string }> {
+  logout(): Promise<{ success: boolean; message: string }> {
     return {
       success: true,
       message: '注销成功',

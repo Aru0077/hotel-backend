@@ -1,5 +1,5 @@
 // src/auth/services/token.service.ts
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { RedisService } from '../../redis/redis.service';
 import { AppConfigService } from '../../config/config.service';
@@ -13,6 +13,8 @@ import {
 
 @Injectable()
 export class TokenService {
+  private readonly logger = new Logger(TokenService.name);
+
   constructor(
     private readonly jwtService: JwtService,
     private readonly redis: RedisService,
@@ -27,15 +29,16 @@ export class TokenService {
     refreshToken: string;
     expiresIn: string;
   }> {
-    // 1. 构建JWT载荷
     const payload = this.buildJwtPayload(user);
-    // 2. 生成访问令牌
+
+    // 生成访问令牌
     const accessToken = await this.jwtService.signAsync(payload, {
       secret: this.configService.jwt.secret,
       expiresIn: this.configService.jwt.expiresIn,
     });
-    // 3. 生成刷新令牌
-    const refreshTokenPayload = {
+
+    // 生成刷新令牌
+    const refreshTokenPayload: RefreshTokenPayload = {
       sub: user.id,
       type: 'refresh',
       iat: Math.floor(Date.now() / 1000),
@@ -45,14 +48,14 @@ export class TokenService {
       secret: this.configService.jwt.refreshSecret,
       expiresIn: this.configService.jwt.refreshExpiresIn,
     });
-    // 4. 将刷新令牌存储到Redis
-    const refreshTokenKey = `refresh_token:${user.id}:${Date.now()}`;
+
+    // 存储刷新令牌到Redis
+    const refreshTokenKey = `refresh_token:${user.id}`;
     const refreshTokenTtl = this.parseExpirationTime(
       this.configService.jwt.refreshExpiresIn,
     );
     await this.redis.set(refreshTokenKey, refreshToken, refreshTokenTtl);
 
-    // 5. 返回令牌信息
     return {
       accessToken,
       refreshToken,
@@ -68,7 +71,7 @@ export class TokenService {
     userWithRoles: UserWithRoles,
   ): Promise<AuthTokenResponse> {
     try {
-      // 1. 验证刷新令牌格式并获取类型安全的 payload
+      // 验证刷新令牌
       const payload = await this.jwtService.verifyAsync<RefreshTokenPayload>(
         dto.refreshToken,
         {
@@ -76,41 +79,41 @@ export class TokenService {
         },
       );
 
-      // 2. 验证令牌类型
       if (payload.type !== 'refresh') {
         throw new UnauthorizedException('无效的刷新令牌类型');
       }
 
-      // 3. 从 payload 中获取用户ID（现在是类型安全的）
-      const userId = payload.sub;
-
-      // 4. 从Redis验证刷新令牌有效性
-      // 使用用户ID作为键进行简化处理
-      const userRefreshTokenKey = `refresh_token:${userId}:current`;
-      const storedToken = await this.redis.get(userRefreshTokenKey);
+      // 从Redis验证刷新令牌
+      const refreshTokenKey = `refresh_token:${payload.sub}`;
+      const storedToken = await this.redis.get(refreshTokenKey);
 
       if (!storedToken || storedToken !== dto.refreshToken) {
         throw new UnauthorizedException('刷新令牌无效或已过期');
       }
 
-      // 5. 生成新的访问令牌和刷新令牌
+      // 生成新的令牌对
       const tokens = await this.generateTokens(userWithRoles);
 
-      // 6. 更新Redis中的刷新令牌
-      await this.redis.set(
-        userRefreshTokenKey,
-        tokens.refreshToken,
-        this.parseExpirationTime(this.configService.jwt.refreshExpiresIn),
-      );
-
-      // 7. 返回新的认证响应
       return this.formatAuthResponse(tokens, userWithRoles);
     } catch (error) {
       if (error instanceof UnauthorizedException) {
         throw error;
       }
+      this.logger.error('刷新令牌验证失败', error);
       throw new UnauthorizedException('刷新令牌验证失败');
     }
+  }
+
+  /**
+   * 验证刷新令牌
+   */
+  async verifyRefreshToken(refreshToken: string): Promise<RefreshTokenPayload> {
+    return await this.jwtService.verifyAsync<RefreshTokenPayload>(
+      refreshToken,
+      {
+        secret: this.configService.jwt.refreshSecret,
+      },
+    );
   }
 
   /**
@@ -123,7 +126,7 @@ export class TokenService {
     return {
       accessToken: tokens.accessToken,
       refreshToken: tokens.refreshToken,
-      expiresIn: tokens.expiresIn,
+      expiresIn: this.parseExpirationTime(tokens.expiresIn),
       tokenType: 'Bearer',
       user,
     };
@@ -132,18 +135,13 @@ export class TokenService {
   /**
    * 用户注销 - 清除刷新令牌
    */
-  async logout(userId: number, refreshToken?: string): Promise<void> {
-    // 1. 删除Redis中的刷新令牌
-    if (refreshToken) {
-      const userRefreshTokenKey = `refresh_token:${userId}:current`;
-      await this.redis.del(userRefreshTokenKey);
-    }
+  async logout(userId: number): Promise<void> {
+    const refreshTokenKey = `refresh_token:${userId}`;
+    await this.redis.del(refreshTokenKey);
   }
 
-  // ============ Token黑名单功能（合并自TokenBlacklistService） ============
-
   /**
-   * 将令牌添加到黑名单
+   * 令牌黑名单功能
    */
   async addToBlacklist(jti: string, expiresAt: number): Promise<void> {
     const ttl = expiresAt - Math.floor(Date.now() / 1000);
@@ -152,33 +150,9 @@ export class TokenService {
     }
   }
 
-  /**
-   * 检查令牌是否在黑名单中
-   */
   async isBlacklisted(jti: string): Promise<boolean> {
     return await this.redis.exists(`blacklist:${jti}`);
   }
-
-  /**
-   * 将刷新令牌添加到黑名单
-   */
-  async blacklistRefreshToken(refreshTokenId: string): Promise<void> {
-    await this.redis.set(`refresh_blacklist:${refreshTokenId}`, '1', 604800); // 7天
-  }
-
-  /**
-   * 验证刷新令牌并返回payload
-   */
-  async verifyRefreshToken(refreshToken: string): Promise<RefreshTokenPayload> {
-    return await this.jwtService.verifyAsync<RefreshTokenPayload>(
-      refreshToken,
-      {
-        secret: this.configService.jwt.refreshSecret,
-      },
-    );
-  }
-
-  // ============ 私有辅助方法 ============
 
   /**
    * 构建JWT载荷
@@ -211,7 +185,7 @@ export class TokenService {
       case 'd':
         return value * 24 * 60 * 60;
       default:
-        return value; // 默认为秒
+        return value;
     }
   }
 }

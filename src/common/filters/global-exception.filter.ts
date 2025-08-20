@@ -11,10 +11,17 @@ import { Request, Response } from 'express';
 import { AppConfigService } from '../../config/config.service';
 
 interface ErrorResponse {
+  success: boolean;
   statusCode: number;
   message: string;
   timestamp: string;
   path: string;
+}
+
+interface HttpExceptionResponse {
+  message?: string | string[];
+  error?: string;
+  statusCode?: number;
 }
 
 @Catch()
@@ -28,59 +35,44 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     const response = ctx.getResponse<Response>();
     const request = ctx.getRequest<Request>();
 
-    const { status, message } = this.getErrorDetails(exception);
+    const errorResponse = this.buildErrorResponse(exception, request);
 
-    const errorResponse: ErrorResponse = {
-      statusCode: status,
-      message,
-      timestamp: new Date().toISOString(),
-      path: request.url,
-    };
-
-    // 记录错误日志
     this.logError(request, errorResponse, exception);
-
-    response.status(status).json(errorResponse);
+    response.status(errorResponse.statusCode).json(errorResponse);
   }
 
-  private getErrorDetails(exception: unknown): {
-    status: number;
-    message: string;
-  } {
-    // 优先处理HttpException
-    if (this.isHttpException(exception)) {
+  private buildErrorResponse(
+    exception: unknown,
+    request: Request,
+  ): ErrorResponse {
+    const timestamp = new Date().toISOString();
+    const path = request.url;
+
+    // HttpException优先处理
+    if (exception instanceof HttpException) {
+      const status = exception.getStatus();
+      const message = this.extractHttpExceptionMessage(exception);
+
       return {
-        status: exception.getStatus(),
-        message: this.extractHttpExceptionMessage(exception),
+        success: false,
+        statusCode: status,
+        message,
+        timestamp,
+        path,
       };
     }
 
-    // 处理标准Error实例
-    if (this.isError(exception)) {
-      return {
-        status: HttpStatus.INTERNAL_SERVER_ERROR,
-        message: this.configService.isProduction
-          ? '服务器内部错误'
-          : exception.message,
-      };
-    }
+    // 其他异常统一处理
+    const message = this.configService.isProduction
+      ? '服务器内部错误'
+      : this.extractErrorMessage(exception);
 
-    // 处理具有错误属性的对象
-    if (this.hasErrorProperties(exception)) {
-      return {
-        status: exception.statusCode ?? HttpStatus.INTERNAL_SERVER_ERROR,
-        message: this.configService.isProduction
-          ? '服务器内部错误'
-          : exception.message,
-      };
-    }
-
-    // 处理其他未知类型的异常
     return {
-      status: HttpStatus.INTERNAL_SERVER_ERROR,
-      message: this.configService.isProduction
-        ? '服务器内部错误'
-        : this.extractErrorMessage(exception),
+      success: false,
+      statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
+      message,
+      timestamp,
+      path,
     };
   }
 
@@ -92,71 +84,23 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     }
 
     if (typeof response === 'object' && response !== null) {
-      if ('message' in response) {
-        const message = (response as Record<string, unknown>).message;
+      const httpResponse = response as HttpExceptionResponse;
 
-        if (Array.isArray(message)) {
-          return message.join(', ');
-        }
-
-        if (typeof message === 'string') {
-          return message;
-        }
+      if (httpResponse.message) {
+        return Array.isArray(httpResponse.message)
+          ? httpResponse.message.join(', ')
+          : httpResponse.message;
       }
     }
 
-    return exception.message;
+    return exception.message || '请求处理失败';
   }
 
   private extractErrorMessage(exception: unknown): string {
-    if (this.isError(exception)) {
+    if (exception instanceof Error) {
       return exception.message;
     }
-
-    if (this.hasErrorProperties(exception)) {
-      return exception.message;
-    }
-
-    if (typeof exception === 'string') {
-      return exception;
-    }
-
-    // 对于完全未知的类型，尝试转换为字符串
-    try {
-      return String(exception);
-    } catch {
-      return '未知错误类型';
-    }
-  }
-
-  /**
-   * 类型守卫：检查是否为HttpException
-   */
-  private isHttpException(exception: unknown): exception is HttpException {
-    return exception instanceof HttpException;
-  }
-
-  /**
-   * 类型守卫：检查是否为Error实例
-   */
-  private isError(exception: unknown): exception is Error {
-    return exception instanceof Error;
-  }
-
-  /**
-   * 类型守卫：检查是否包含特定错误属性
-   */
-  private hasErrorProperties(exception: unknown): exception is {
-    message: string;
-    code?: string;
-    statusCode?: number;
-  } {
-    return (
-      typeof exception === 'object' &&
-      exception !== null &&
-      'message' in exception &&
-      typeof (exception as Error).message === 'string'
-    );
+    return typeof exception === 'string' ? exception : '未知错误';
   }
 
   private logError(
@@ -164,48 +108,18 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     errorResponse: ErrorResponse,
     exception: unknown,
   ): void {
-    const errorType = this.getExceptionType(exception);
-    const logMessage = `${request.method} ${request.url} - ${errorResponse.statusCode} - ${errorResponse.message} [${errorType}]`;
+    const { method, url } = request;
+    const { statusCode, message } = errorResponse;
 
-    if (errorResponse.statusCode >= 500) {
+    const logMessage = `${method} ${url} - ${statusCode} - ${message}`;
+
+    if (statusCode >= 500) {
       this.logger.error(
         logMessage,
-        this.isError(exception)
-          ? exception.stack
-          : this.getExceptionDetails(exception),
+        exception instanceof Error ? exception.stack : undefined,
       );
     } else {
       this.logger.warn(logMessage);
-    }
-  }
-
-  /**
-   * 获取异常类型描述
-   */
-  private getExceptionType(exception: unknown): string {
-    if (this.isHttpException(exception)) {
-      return `HttpException(${exception.constructor.name})`;
-    }
-
-    if (this.isError(exception)) {
-      return `Error(${exception.constructor.name})`;
-    }
-
-    if (this.hasErrorProperties(exception)) {
-      return 'ErrorLikeObject';
-    }
-
-    return typeof exception;
-  }
-
-  /**
-   * 获取异常详细信息用于日志记录
-   */
-  private getExceptionDetails(exception: unknown): string {
-    try {
-      return JSON.stringify(exception, null, 2);
-    } catch {
-      return String(exception);
     }
   }
 }

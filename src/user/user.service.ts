@@ -15,21 +15,7 @@ export class UserService {
   // ============ 用户创建 ============
 
   async createUser(data: CreateUserData): Promise<UserWithRoles> {
-    // 验证至少有一个身份标识符
-    const hasIdentifier =
-      data.username ??
-      data.email ??
-      data.phone ??
-      data.facebookId ??
-      data.googleId;
-    if (!hasIdentifier) {
-      throw new BadRequestException('至少需要提供一个身份标识符');
-    }
-
-    // 验证字段格式
-    if (data.username) this.validateUsername(data.username);
-    if (data.email) this.validateEmail(data.email);
-    if (data.phone) this.validatePhone(data.phone);
+    this.validateCreateUserData(data);
 
     const user = await this.prisma.$transaction(async (tx) => {
       // 创建用户记录
@@ -49,17 +35,10 @@ export class UserService {
           facebookId: data.facebookId,
           googleId: data.googleId,
           hashedPassword: data.hashedPassword,
-          isUsernameVerified: data.isUsernameVerified,
-          isEmailVerified: data.isEmailVerified,
-          isPhoneVerified: data.isPhoneVerified,
-          isFacebookVerified: data.isFacebookVerified,
-          isGoogleVerified: data.isGoogleVerified,
-          lastUsedUsername: data.username ? new Date() : undefined,
-          lastUsedEmail: data.email ? new Date() : undefined,
-          lastUsedPhone: data.phone ? new Date() : undefined,
-          lastUsedFacebook: data.facebookId ? new Date() : undefined,
-          lastUsedGoogle: data.googleId ? new Date() : undefined,
-          additionalData: data.additionalData,
+          isEmailVerified: data.isEmailVerified ?? false,
+          isPhoneVerified: data.isPhoneVerified ?? false,
+          isFacebookVerified: data.isFacebookVerified ?? false,
+          isGoogleVerified: data.isGoogleVerified ?? false,
         },
       });
 
@@ -68,7 +47,8 @@ export class UserService {
         data: {
           userId: newUser.id,
           roleType: data.roleType,
-          status: 'ACTIVE',
+          status: data.roleStatus ?? 'ACTIVE',
+          expiresAt: data.roleExpiresAt,
         },
       });
 
@@ -79,6 +59,11 @@ export class UserService {
           credentials: true,
           roles: {
             where: { status: 'ACTIVE' },
+            include: {
+              merchant: true,
+              customer: true,
+              admin: true,
+            },
           },
         },
       });
@@ -121,6 +106,11 @@ export class UserService {
         credentials: true,
         roles: {
           where: { status: 'ACTIVE' },
+          include: {
+            merchant: true,
+            customer: true,
+            admin: true,
+          },
         },
       },
     });
@@ -135,6 +125,11 @@ export class UserService {
         credentials: true,
         roles: {
           where: { status: 'ACTIVE' },
+          include: {
+            merchant: true,
+            customer: true,
+            admin: true,
+          },
         },
       },
     });
@@ -149,6 +144,11 @@ export class UserService {
         credentials: true,
         roles: {
           where: { status: 'ACTIVE' },
+          include: {
+            merchant: true,
+            customer: true,
+            admin: true,
+          },
         },
       },
     });
@@ -161,6 +161,11 @@ export class UserService {
         credentials: true,
         roles: {
           where: { status: 'ACTIVE' },
+          include: {
+            merchant: true,
+            customer: true,
+            admin: true,
+          },
         },
       },
     });
@@ -173,81 +178,46 @@ export class UserService {
       where: { id: userId },
       data: { lastLoginAt: new Date() },
     });
-  }
 
-  async updateCredentialLastUsedTime(
-    userId: number,
-    type: CredentialType,
-  ): Promise<void> {
-    const updateData: Record<string, Date> = {};
-
-    switch (type) {
-      case 'username':
-        updateData.lastUsedUsername = new Date();
-        break;
-      case 'email':
-        updateData.lastUsedEmail = new Date();
-        break;
-      case 'phone':
-        updateData.lastUsedPhone = new Date();
-        break;
-      case 'facebook':
-        updateData.lastUsedFacebook = new Date();
-        break;
-      case 'google':
-        updateData.lastUsedGoogle = new Date();
-        break;
-    }
-
-    if (Object.keys(updateData).length > 0) {
-      await this.prisma.authCredential.update({
-        where: { userId },
-        data: updateData,
-      });
-    }
-  }
-
-  // ============ 用户状态检查 ============
-  isUserActive(user: UserWithRoles): boolean;
-  isUserActive(user: UserWithCredentials): boolean;
-  isUserActive(user: UserWithRoles | UserWithCredentials): boolean {
-    // 类型守卫：检查用户对象是否包含roles属性
-    if (this.hasRoles(user)) {
-      return user.roles.length > 0;
-    }
-
-    // 对于没有roles的用户类型，默认认为是激活的
-    // 因为UserWithCredentials类型意味着用户已经存在
-    return true;
+    // 同时更新认证凭证的最后登录时间
+    await this.prisma.authCredential.update({
+      where: { userId },
+      data: { lastLoginAt: new Date() },
+    });
   }
 
   // ============ 私有辅助方法 ============
+
+  private validateCreateUserData(data: CreateUserData): void {
+    const hasIdentifier =
+      data.username ??
+      data.email ??
+      data.phone ??
+      data.facebookId ??
+      data.googleId;
+
+    if (!hasIdentifier) {
+      throw new BadRequestException('至少需要提供一个身份标识符');
+    }
+
+    if (data.username) this.validateUsername(data.username);
+    if (data.email) this.validateEmail(data.email);
+    if (data.phone) this.validatePhone(data.phone);
+  }
 
   private buildWhereCondition(
     identifier: string,
     type: CredentialType,
   ): Record<string, string> {
-    const whereCondition: Record<string, string> = {};
+    const conditions: Record<CredentialType, string> = {
+      username: 'username',
+      email: 'email',
+      phone: 'phone',
+      facebook: 'facebookId',
+      google: 'googleId',
+    };
 
-    switch (type) {
-      case 'username':
-        whereCondition.username = identifier;
-        break;
-      case 'email':
-        whereCondition.email = identifier;
-        break;
-      case 'phone':
-        whereCondition.phone = identifier;
-        break;
-      case 'facebook':
-        whereCondition.facebookId = identifier;
-        break;
-      case 'google':
-        whereCondition.googleId = identifier;
-        break;
-    }
-
-    return whereCondition;
+    return { [conditions[type]]: identifier };
   }
 
   private validateUsername(username: string): void {

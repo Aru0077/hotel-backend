@@ -99,7 +99,7 @@ export class AuthController {
   async loginWithPassword(
     @Body() dto: PasswordLoginDto,
   ): Promise<AuthTokenResponse> {
-    return  this.authService.loginWithPassword(dto);
+    return this.authService.loginWithPassword(dto);
   }
 
   /**

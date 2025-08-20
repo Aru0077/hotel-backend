@@ -10,17 +10,17 @@ import {
   UsernamePasswordRegisterDto,
   EmailRegisterDto,
   PhoneRegisterDto,
+  PasswordLoginDto,
   EmailLoginDto,
   PhoneLoginDto,
   SendVerificationCodeDto,
-  RefreshTokenDto,
 } from './dto/auth.dto';
 import {
   AuthTokenResponse,
   UserWithCredentials,
   UserWithRoles,
   CreateUserData,
-  RoleType,
+  VerificationCodeType,
 } from '../types';
 import { PasswordService } from './services/password.service';
 import { VerificationCodeService } from './services/verification-code.service';
@@ -43,17 +43,14 @@ export class AuthService {
   async registerWithUsernamePassword(
     dto: UsernamePasswordRegisterDto,
   ): Promise<AuthTokenResponse> {
-    // 检查用户名是否已存在
     if (await this.userService.checkUserExists(dto.username, 'username')) {
       throw new ConflictException('用户名已存在');
     }
 
-    // 创建用户数据
     const userData: CreateUserData = {
       username: dto.username,
       hashedPassword: await this.passwordService.hashPassword(dto.password),
-      roleType: dto.roleType ?? RoleType.CUSTOMER, // 使用RoleType枚举
-      isUsernameVerified: true,
+      roleType: dto.roleType,
       isEmailVerified: false,
       isPhoneVerified: false,
       isFacebookVerified: false,
@@ -64,8 +61,9 @@ export class AuthService {
     return this.generateAuthResponse(user);
   }
 
-  async registerWithEmail(dto: EmailRegisterDto): Promise<AuthTokenResponse> {
-    // 验证邮箱验证码
+  async registerWithEmailCode(
+    dto: EmailRegisterDto,
+  ): Promise<AuthTokenResponse> {
     const isCodeValid = await this.verificationCodeService.verifyCode(
       dto.email,
       dto.verificationCode,
@@ -75,19 +73,16 @@ export class AuthService {
       throw new BadRequestException('验证码错误或已过期');
     }
 
-    // 检查邮箱是否已存在
     if (await this.userService.checkUserExists(dto.email, 'email')) {
       throw new ConflictException('邮箱已存在');
     }
 
-    // 创建用户数据
     const userData: CreateUserData = {
       email: dto.email,
       hashedPassword: dto.password
         ? await this.passwordService.hashPassword(dto.password)
         : undefined,
-      roleType: dto.roleType ?? RoleType.CUSTOMER, // 使用RoleType枚举
-      isUsernameVerified: false,
+      roleType: dto.roleType,
       isEmailVerified: true,
       isPhoneVerified: false,
       isFacebookVerified: false,
@@ -95,8 +90,6 @@ export class AuthService {
     };
 
     const user = await this.userService.createUser(userData);
-
-    // 清除验证码
     await this.verificationCodeService.clearVerificationCode(
       dto.email,
       'register',
@@ -105,8 +98,9 @@ export class AuthService {
     return this.generateAuthResponse(user);
   }
 
-  async registerWithPhone(dto: PhoneRegisterDto): Promise<AuthTokenResponse> {
-    // 验证手机验证码
+  async registerWithPhoneCode(
+    dto: PhoneRegisterDto,
+  ): Promise<AuthTokenResponse> {
     const isCodeValid = await this.verificationCodeService.verifyCode(
       dto.phone,
       dto.verificationCode,
@@ -116,19 +110,16 @@ export class AuthService {
       throw new BadRequestException('验证码错误或已过期');
     }
 
-    // 检查手机号是否已存在
     if (await this.userService.checkUserExists(dto.phone, 'phone')) {
       throw new ConflictException('手机号已存在');
     }
 
-    // 创建用户数据
     const userData: CreateUserData = {
       phone: dto.phone,
       hashedPassword: dto.password
         ? await this.passwordService.hashPassword(dto.password)
         : undefined,
-      roleType: dto.roleType ?? RoleType.CUSTOMER, // 使用RoleType枚举
-      isUsernameVerified: false,
+      roleType: dto.roleType,
       isEmailVerified: false,
       isPhoneVerified: true,
       isFacebookVerified: false,
@@ -136,8 +127,6 @@ export class AuthService {
     };
 
     const user = await this.userService.createUser(userData);
-
-    // 清除验证码
     await this.verificationCodeService.clearVerificationCode(
       dto.phone,
       'register',
@@ -158,7 +147,6 @@ export class AuthService {
       return null;
     }
 
-    // 验证密码
     const isPasswordValid = await this.passwordService.comparePassword(
       password,
       user.credentials.hashedPassword,
@@ -167,14 +155,28 @@ export class AuthService {
       return null;
     }
 
-    // 更新最后登录时间
     await this.userService.updateLastLoginTime(user.id);
-
     return user;
   }
 
-  async loginWithEmail(dto: EmailLoginDto): Promise<AuthTokenResponse> {
-    // 验证邮箱验证码
+  async loginWithPassword(dto: PasswordLoginDto): Promise<AuthTokenResponse> {
+    const user = await this.validateUserCredentials(
+      dto.identifier,
+      dto.password,
+    );
+    if (!user) {
+      throw new UnauthorizedException('用户名、邮箱、手机号或密码错误');
+    }
+
+    const userWithRoles = await this.userService.findUserById(user.id);
+    if (!userWithRoles) {
+      throw new UnauthorizedException('用户不存在');
+    }
+
+    return this.generateAuthResponse(userWithRoles);
+  }
+
+  async loginWithEmailCode(dto: EmailLoginDto): Promise<AuthTokenResponse> {
     const isCodeValid = await this.verificationCodeService.verifyCode(
       dto.email,
       dto.verificationCode,
@@ -198,8 +200,7 @@ export class AuthService {
     return this.generateAuthResponse(user);
   }
 
-  async loginWithPhone(dto: PhoneLoginDto): Promise<AuthTokenResponse> {
-    // 验证手机验证码
+  async loginWithPhoneCode(dto: PhoneLoginDto): Promise<AuthTokenResponse> {
     const isCodeValid = await this.verificationCodeService.verifyCode(
       dto.phone,
       dto.verificationCode,
@@ -225,25 +226,44 @@ export class AuthService {
 
   // ============ 辅助方法 ============
 
-  async sendVerificationCode(dto: SendVerificationCodeDto): Promise<void> {
-    await this.verificationCodeService.sendVerificationCode(dto);
+  async sendVerificationCode(
+    dto: SendVerificationCodeDto,
+  ): Promise<{ success: boolean; message: string }> {
+    // 确定验证码类型
+    const type = dto.email
+      ? VerificationCodeType.EMAIL
+      : VerificationCodeType.PHONE;
+
+    // 构造验证码服务所需的参数
+    const verificationDto = {
+      ...dto,
+      type,
+    };
+
+    await this.verificationCodeService.sendVerificationCode(verificationDto);
+    return {
+      success: true,
+      message: '验证码发送成功',
+    };
   }
 
-  async refreshToken(dto: RefreshTokenDto): Promise<AuthTokenResponse> {
-    const payload = await this.tokenService.verifyRefreshToken(
-      dto.refreshToken,
-    );
+  async refreshToken(refreshToken: string): Promise<AuthTokenResponse> {
+    const payload = await this.tokenService.verifyRefreshToken(refreshToken);
     const user = await this.userService.findUserById(payload.sub);
 
     if (!user) {
       throw new UnauthorizedException('用户不存在');
     }
 
+    const dto = { refreshToken };
     return await this.tokenService.refreshToken(dto, user);
   }
 
-  async logout(userId: number, refreshToken?: string): Promise<void> {
-    await this.tokenService.logout(userId, refreshToken);
+  async logout(): Promise<{ success: boolean; message: string }> {
+    return {
+      success: true,
+      message: '注销成功',
+    };
   }
 
   // ============ 私有方法 ============

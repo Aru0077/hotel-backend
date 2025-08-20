@@ -19,6 +19,8 @@ export {
   AdminProfile,
   PrismaTransaction,
   CreateUserData,
+  VerificationCodeType,
+  CredentialType,
 } from './core.types';
 
 // 认证类型导出

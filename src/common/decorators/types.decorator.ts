@@ -1,10 +1,11 @@
 // src/common/decorators/types.decorator.ts
 import { applyDecorators, Type } from '@nestjs/common';
 import { ApiExtraModels, ApiOkResponse, getSchemaPath } from '@nestjs/swagger';
-import { ApiResponseDto, PaginatedResponseDto } from '../../types/common.types';
+import { ApiResponseDto, PaginatedResponseDto } from '../../types';
 
 /**
  * API响应装饰器
+ * 用于标准化API响应格式的Swagger文档
  */
 export const ApiResponseType = <TModel extends Type<unknown>>(
   model: TModel,
@@ -29,6 +30,7 @@ export const ApiResponseType = <TModel extends Type<unknown>>(
 
 /**
  * 分页响应装饰器
+ * 用于标准化分页API响应格式的Swagger文档
  */
 export const ApiPaginatedResponseType = <TModel extends Type<unknown>>(
   model: TModel,

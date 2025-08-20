@@ -225,7 +225,7 @@ export class SendVerificationCodeDto {
     description: '邮箱地址',
     example: 'john@example.com',
   })
-  @ValidateIf((o) => !o.phone)
+  @ValidateIf((o: { phone?: string }) => !o.phone)
   @IsEmail({}, { message: '请输入有效的邮箱地址' })
   email?: string;
 
@@ -233,7 +233,7 @@ export class SendVerificationCodeDto {
     description: '手机号码',
     example: '+8613800138000',
   })
-  @ValidateIf((o) => !o.email)
+  @ValidateIf((o: { email?: string }) => !o.email)
   @IsPhoneNumber('CN', { message: '请输入有效的手机号码' })
   phone?: string;
 

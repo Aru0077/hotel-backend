@@ -12,6 +12,7 @@ import {
 export { RoleType, RoleStatus, AuthProvider, MerchantVerifyStatus, Gender };
 
 // ============ 业务枚举（应用层） ============
+
 export enum VerificationCodePurpose {
   REGISTER = 'register',
   LOGIN = 'login',
@@ -19,6 +20,20 @@ export enum VerificationCodePurpose {
   VERIFY_EMAIL = 'verify_email',
   VERIFY_PHONE = 'verify_phone',
 }
+
+// 验证码类型枚举（用于区分邮件和短信）
+export enum VerificationCodeType {
+  EMAIL = 'EMAIL',
+  PHONE = 'PHONE',
+}
+
+// 认证凭证类型枚举
+export type CredentialType =
+  | 'username'
+  | 'email'
+  | 'phone'
+  | 'facebook'
+  | 'google';
 
 // ============ 核心用户类型 ============
 export type BaseUser = Prisma.UserGetPayload<{

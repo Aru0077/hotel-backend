@@ -67,7 +67,6 @@ export interface SocialUserInfo {
 export interface VerificationCodeData {
   identifier: string;
   code: string;
-  purpose: string;
   expiresAt: Date;
 }
 

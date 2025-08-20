@@ -10,7 +10,6 @@ export {
   AuthProvider,
   MerchantVerifyStatus,
   Gender,
-  VerificationCodePurpose,
   BaseUser,
   UserWithCredentials,
   UserWithRoles,

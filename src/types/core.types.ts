@@ -11,15 +11,7 @@ import {
 // ============ 重新导出Prisma枚举 ============
 export { RoleType, RoleStatus, AuthProvider, MerchantVerifyStatus, Gender };
 
-// ============ 业务枚举（应用层） ============
-
-export enum VerificationCodePurpose {
-  REGISTER = 'register',
-  LOGIN = 'login',
-  RESET_PASSWORD = 'reset_password',
-  VERIFY_EMAIL = 'verify_email',
-  VERIFY_PHONE = 'verify_phone',
-}
+// ============ 业务枚举（应用层） ===========
 
 // 验证码类型枚举（用于区分邮件和短信）
 export enum VerificationCodeType {

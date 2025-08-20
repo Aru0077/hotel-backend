@@ -10,9 +10,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
 import { LocalStrategy } from './strategies/local.strategy';
 
 // 认证服务
-import { AuthService } from './services/auth.service';
-import { RegistrationService } from './services/registration.service';
-import { LoginService } from './services/login.service';
+import { AuthService } from './auth.service';
 
 // 专门化服务
 import { PasswordService } from './services/password.service';
@@ -43,8 +41,6 @@ import { LocalAuthGuard } from './guards/local-auth.guard';
   providers: [
     // 核心认证服务
     AuthService,
-    RegistrationService,
-    LoginService,
 
     // 专门化服务
     PasswordService,
@@ -64,8 +60,6 @@ import { LocalAuthGuard } from './guards/local-auth.guard';
     PassportModule,
     JwtModule,
     AuthService,
-    RegistrationService,
-    LoginService,
     PasswordService,
     VerificationCodeService,
     TokenService,

@@ -15,6 +15,7 @@ import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { ResponseTransformInterceptor } from './common/interceptors/response-transform.interceptor';
 import { SmsModule } from './sms/sms.module';
+import { UserModule } from './user/user.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { SmsModule } from './sms/sms.module';
     RedisModule,
 
     // 功能模块 业务模块
+    UserModule,
     AuthModule,
     SmsModule,
 

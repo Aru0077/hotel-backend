@@ -260,7 +260,7 @@ export class AuthService {
     return await this.tokenService.refreshToken(dto, user);
   }
 
-  logout(): Promise<{ success: boolean; message: string }> {
+  async logout(): Promise<{ success: boolean; message: string }> {
     return {
       success: true,
       message: '注销成功',

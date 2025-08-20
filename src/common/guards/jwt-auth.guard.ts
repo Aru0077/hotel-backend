@@ -10,14 +10,8 @@ import { Reflector } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';
 import { Request } from 'express';
 import { AppConfigService } from '../../config/config.service';
-
-interface JwtPayload {
-  sub: string;
-  email?: string;
-  iat?: number;
-  exp?: number;
-  [key: string]: unknown;
-}
+import { TokenService } from '@auth/services/token.service';
+import { JwtPayload } from '../../types';
 
 export const IS_PUBLIC_KEY = 'isPublic';
 
@@ -27,12 +21,12 @@ export class JwtAuthGuard implements CanActivate {
 
   constructor(
     private readonly jwtService: JwtService,
+    private readonly tokenService: TokenService,
     private readonly reflector: Reflector,
     private readonly configService: AppConfigService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    // 检查是否为公开路由
     const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
       context.getHandler(),
       context.getClass(),
@@ -54,8 +48,31 @@ export class JwtAuthGuard implements CanActivate {
         secret: this.configService.jwt.secret,
       });
 
+      // 验证payload基本结构
+      if (!payload.sub || !payload.roles || payload.roles.length === 0) {
+        throw new UnauthorizedException('JWT载荷无效');
+      }
+
+      // 检查令牌是否在黑名单中
+      if (payload.jti) {
+        const isBlacklisted = await this.tokenService.isBlacklisted(
+          payload.jti,
+        );
+        if (isBlacklisted) {
+          throw new UnauthorizedException('访问令牌已被撤销');
+        }
+      }
+
       // 将用户信息附加到请求对象
-      request.user = payload;
+      request.user = {
+        userId: payload.sub,
+        username: payload.username,
+        email: payload.email,
+        phone: payload.phone,
+        roles: payload.roles,
+        jti: payload.jti,
+      };
+
       return true;
     } catch (error) {
       const errorMessage =

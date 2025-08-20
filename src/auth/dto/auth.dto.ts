@@ -266,3 +266,13 @@ export class RefreshTokenDto {
   @IsString()
   refreshToken: string;
 }
+
+export class LogoutDto {
+  @ApiPropertyOptional({
+    description: '刷新令牌（可选）',
+    example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+  })
+  @IsOptional()
+  @IsString()
+  refreshToken?: string;
+}

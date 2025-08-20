@@ -136,28 +136,71 @@ export class TokenService {
    * 用户注销 - 清除刷新令牌
    */
   async logout(userId: number): Promise<void> {
-    const refreshTokenKey = `refresh_token:${userId}`;
-    await this.redis.del(refreshTokenKey);
+    try {
+      const refreshTokenKey = `refresh_token:${userId}`;
+      await this.redis.del(refreshTokenKey);
+
+      // 2. 清除用户会话相关的缓存
+      const sessionKeys = [
+        `user_session:${userId}`,
+        `user_cache:${userId}`,
+        `verification:*:*${userId}*`, // 清除相关验证码
+      ];
+
+      for (const key of sessionKeys) {
+        if (key.includes('*')) {
+          // 处理通配符删除
+          const keys = await this.redis.getClient().keys(key);
+          if (keys.length > 0) {
+            await this.redis.getClient().del(keys);
+          }
+        } else {
+          await this.redis.del(key);
+        }
+      }
+
+      this.logger.log(`用户令牌清除成功: userId=${userId}`);
+    } catch (error) {
+      this.logger.error(`用户令牌清除失败: userId=${userId}`, error);
+      throw error;
+    }
   }
 
   /**
    * 令牌黑名单功能
    */
   async addToBlacklist(jti: string, expiresAt: number): Promise<void> {
-    const ttl = expiresAt - Math.floor(Date.now() / 1000);
-    if (ttl > 0) {
-      await this.redis.set(`blacklist:${jti}`, '1', ttl);
+    try {
+      const ttl = expiresAt - Math.floor(Date.now() / 1000);
+      if (ttl > 0) {
+        await this.redis.set(`blacklist:${jti}`, '1', ttl);
+        this.logger.debug(`令牌已加入黑名单: jti=${jti}, ttl=${ttl}s`);
+      }
+    } catch (error) {
+      this.logger.error(`令牌黑名单添加失败: jti=${jti}`, error);
+      throw error;
     }
   }
 
+  /**
+   * 检查令牌是否在黑名单中
+   */
   async isBlacklisted(jti: string): Promise<boolean> {
-    return await this.redis.exists(`blacklist:${jti}`);
+    try {
+      return await this.redis.exists(`blacklist:${jti}`);
+    } catch (error) {
+      this.logger.error(`黑名单检查失败: jti=${jti}`, error);
+      // 出错时为安全起见返回true
+      return true;
+    }
   }
 
   /**
    * 构建JWT载荷
    */
   private buildJwtPayload(user: UserWithRoles): JwtPayload {
+    const jti = this.generateJti();
+
     return {
       sub: user.id,
       username: user.credentials?.username ?? undefined,
@@ -165,7 +208,15 @@ export class TokenService {
       phone: user.credentials?.phone ?? undefined,
       roles: user.roles.map((role) => role.roleType),
       iat: Math.floor(Date.now() / 1000),
+      jti, // 添加唯一标识符
     };
+  }
+
+  /**
+   * 生成JWT唯一标识符
+   */
+  private generateJti(): string {
+    return `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   }
 
   /**

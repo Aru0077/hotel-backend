@@ -6,6 +6,7 @@ import {
   HttpStatus,
   UseGuards,
   Body,
+  Req,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -25,6 +26,7 @@ import {
   PhoneLoginDto,
   SendVerificationCodeDto,
   RefreshTokenDto,
+  LogoutDto,
 } from './dto/auth.dto';
 import { AuthService } from './auth.service';
 import { AuthTokenResponse } from '../types';
@@ -173,6 +175,7 @@ export class AuthController {
   @ApiOperation({ summary: '用户注销' })
   @ApiResponse({ status: 200, description: '注销成功' })
   @ApiResponse({ status: 401, description: '未授权' })
+  @ApiResponse({ status: 400, description: '注销失败' })
   async logout(): Promise<{ success: boolean; message: string }> {
     return this.authService.logout();
   }

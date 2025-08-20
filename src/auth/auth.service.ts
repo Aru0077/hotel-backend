@@ -27,6 +27,7 @@ import { PasswordService } from './services/password.service';
 import { VerificationCodeService } from './services/verification-code.service';
 import { TokenService } from './services/token.service';
 import { UserService } from '../user/user.service';
+import { JwtService } from '@nestjs/jwt';
 
 @Injectable()
 export class AuthService {
@@ -36,6 +37,7 @@ export class AuthService {
     private readonly passwordService: PasswordService,
     private readonly verificationCodeService: VerificationCodeService,
     private readonly tokenService: TokenService,
+    private readonly jwtService: JwtService,
     private readonly userService: UserService,
   ) {}
 
@@ -260,10 +262,15 @@ export class AuthService {
     return await this.tokenService.refreshToken(dto, user);
   }
 
+  /**
+   * 用户注销 - 完整实现
+   * @param request - 包含用户信息和JWT的请求对象
+   * @param refreshToken - 可选的刷新令牌
+   */
   async logout(): Promise<{ success: boolean; message: string }> {
     return {
-      success: true,
-      message: '注销成功',
+      success: false,
+      message: '注销失败，请稍后重试',
     };
   }
 

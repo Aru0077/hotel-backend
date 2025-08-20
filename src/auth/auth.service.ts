@@ -6,12 +6,11 @@ import {
   ConflictException,
   Logger,
 } from '@nestjs/common';
-import { RegisterDto, LoginDto, SendCodeDto } from './dto/auth.dto';
+import { AuthDto, SendCodeDto } from './dto/auth.dto';
 import {
   AuthTokenResponse,
   CreateUserData,
   CurrentUser,
-  VerificationCodePurpose,
   UserWithRoles,
 } from '../types';
 import { PasswordService } from './services/password.service';
@@ -33,24 +32,36 @@ export class AuthService {
   /**
    * 统一注册方法
    */
-  async register(dto: RegisterDto): Promise<AuthTokenResponse> {
-    const identifier = this.extractIdentifier(dto);
-    const identifierType = this.detectIdentifierType(identifier);
+  async register(dto: AuthDto): Promise<AuthTokenResponse> {
+    const identifierType = this.detectIdentifierType(dto.identifier);
 
     // 检查用户是否已存在
-    if (await this.userService.checkUserExists(identifier, identifierType)) {
+    if (
+      await this.userService.checkUserExists(dto.identifier, identifierType)
+    ) {
       throw new ConflictException('用户已存在');
     }
 
     // 验证码注册
     if (dto.verificationCode) {
       const isValid = await this.verificationCodeService.verifyCode(
-        identifier,
+        dto.identifier,
         dto.verificationCode,
-        VerificationCodePurpose.REGISTER,
       );
       if (!isValid) {
         throw new BadRequestException('验证码错误或已过期');
+      }
+    }
+
+    // 密码强度验证
+    if (dto.password) {
+      const validation = this.passwordService.validatePasswordStrength(
+        dto.password,
+      );
+      if (!validation.isValid) {
+        throw new BadRequestException(
+          `密码强度不足: ${validation.errors.join(', ')}`,
+        );
       }
     }
 
@@ -61,7 +72,7 @@ export class AuthService {
         ? await this.passwordService.hashPassword(dto.password)
         : undefined,
       ...this.buildCredentialsByType(
-        identifier,
+        dto.identifier,
         identifierType,
         !!dto.verificationCode,
       ),
@@ -72,11 +83,12 @@ export class AuthService {
 
     // 清除验证码
     if (dto.verificationCode) {
-      await this.verificationCodeService.clearVerificationCode(
-        identifier,
-        VerificationCodePurpose.REGISTER,
-      );
+      await this.verificationCodeService.clearVerificationCode(dto.identifier);
     }
+
+    this.logger.log(
+      `用户注册成功: ${this.maskIdentifier(dto.identifier, identifierType)}, 角色: ${dto.roleType}`,
+    );
 
     return this.generateTokens(user);
   }
@@ -84,38 +96,29 @@ export class AuthService {
   /**
    * 统一登录方法
    */
-  async login(dto: LoginDto): Promise<AuthTokenResponse> {
+  async login(dto: AuthDto): Promise<AuthTokenResponse> {
     let user: UserWithRoles | null = null;
 
     if (dto.verificationCode) {
       // 验证码登录
-      const identifier = dto.email || dto.phone;
-      if (!identifier) {
-        throw new BadRequestException('验证码登录需要提供邮箱或手机号');
-      }
-
       const isValid = await this.verificationCodeService.verifyCode(
-        identifier,
+        dto.identifier,
         dto.verificationCode,
-        VerificationCodePurpose.LOGIN,
       );
       if (!isValid) {
         throw new UnauthorizedException('验证码错误或已过期');
       }
 
-      user = await this.findUserByIdentifier(identifier);
+      user = await this.findUserByIdentifier(dto.identifier);
       if (!user) {
         throw new UnauthorizedException('用户不存在');
       }
 
-      await this.verificationCodeService.clearVerificationCode(
-        identifier,
-        VerificationCodePurpose.LOGIN,
-      );
+      await this.verificationCodeService.clearVerificationCode(dto.identifier);
     } else {
       // 密码登录
-      if (!dto.identifier || !dto.password) {
-        throw new BadRequestException('密码登录需要提供用户标识符和密码');
+      if (!dto.password) {
+        throw new BadRequestException('密码登录需要提供密码');
       }
 
       user = await this.userService.findUserByIdentifier(dto.identifier);
@@ -132,19 +135,12 @@ export class AuthService {
       }
     }
 
-    // 验证角色权限
-    if (dto.preferredRole) {
-      const hasRole = user.roles.some(
-        (role) =>
-          role.roleType === dto.preferredRole && role.status === 'ACTIVE',
-      );
-      if (!hasRole) {
-        throw new UnauthorizedException('用户不具备该角色权限');
-      }
-    }
-
     // 更新登录时间
     await this.userService.updateLastLoginTime(user.id);
+
+    this.logger.log(
+      `用户登录成功: userId=${user.id}, 角色数量=${user.roles.length}`,
+    );
 
     return this.generateTokens(user);
   }
@@ -160,36 +156,59 @@ export class AuthService {
    * 刷新令牌
    */
   async refreshToken(refreshToken: string): Promise<AuthTokenResponse> {
-    const payload = await this.tokenService.verifyRefreshToken(refreshToken);
-    const user = await this.userService.findUserById(payload.sub);
+    try {
+      const payload = await this.tokenService.verifyRefreshToken(refreshToken);
+      const user = await this.userService.findUserById(payload.sub);
 
-    if (!user) {
-      throw new UnauthorizedException('用户不存在');
+      if (!user) {
+        throw new UnauthorizedException('用户不存在');
+      }
+
+      const dto = { refreshToken };
+      return await this.tokenService.refreshToken(dto, user);
+    } catch (error) {
+      this.logger.warn(
+        `刷新令牌失败: ${error instanceof Error ? error.message : '未知错误'}`,
+      );
+      throw new UnauthorizedException('刷新令牌无效或已过期');
     }
-
-    const dto = { refreshToken };
-    return await this.tokenService.refreshToken(dto, user);
   }
 
   /**
    * 用户注销
    */
   async logout(user: CurrentUser): Promise<{ success: boolean }> {
-    await this.tokenService.logout(user.userId);
-    return { success: true };
+    try {
+      await this.tokenService.logout(user.userId);
+      this.logger.log(`用户注销成功: userId=${user.userId}`);
+      return { success: true };
+    } catch (error) {
+      this.logger.error(`用户注销失败: userId=${user.userId}`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * 验证用户凭证（供策略使用）
+   */
+  async validateUserCredentials(
+    identifier: string,
+    password: string,
+  ): Promise<UserWithRoles | null> {
+    const user = await this.userService.findUserByIdentifier(identifier);
+    if (!user?.credentials?.hashedPassword) {
+      return null;
+    }
+
+    const isValid = await this.passwordService.comparePassword(
+      password,
+      user.credentials.hashedPassword,
+    );
+
+    return isValid ? user : null;
   }
 
   // ============ 私有方法 ============
-
-  /**
-   * 从DTO中提取标识符
-   */
-  private extractIdentifier(dto: RegisterDto): string {
-    if (dto.username) return dto.username;
-    if (dto.email) return dto.email;
-    if (dto.phone) return dto.phone;
-    throw new BadRequestException('必须提供用户名、邮箱或手机号');
-  }
 
   /**
    * 自动检测标识符类型
@@ -268,5 +287,32 @@ export class AuthService {
   ): Promise<AuthTokenResponse> {
     const tokens = await this.tokenService.generateTokens(user);
     return this.tokenService.formatAuthResponse(tokens, user);
+  }
+
+  /**
+   * 标识符脱敏
+   */
+  private maskIdentifier(
+    identifier: string,
+    type: 'username' | 'email' | 'phone',
+  ): string {
+    switch (type) {
+      case 'email':
+        return identifier.replace(/(.{1}).*(@.*)/, '$1***$2');
+      case 'phone':
+        if (identifier.startsWith('+86')) {
+          return identifier.replace(/(\+86\d{3})\d{4}(\d{4})/, '$1****$2');
+        } else if (identifier.startsWith('+')) {
+          return identifier.replace(/(\+\d{1,3}\d{2})\d*(\d{4})/, '$1****$2');
+        } else {
+          return identifier.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2');
+        }
+      case 'username':
+        return identifier.length > 4
+          ? identifier.slice(0, 2) + '***' + identifier.slice(-2)
+          : identifier.slice(0, 1) + '***';
+      default:
+        return identifier.slice(0, 3) + '***';
+    }
   }
 }

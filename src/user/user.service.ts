@@ -1,12 +1,7 @@
 // src/user/user.service.ts
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import {
-  UserWithCredentials,
-  UserWithRoles,
-  CreateUserData,
-  CredentialType,
-} from '../types';
+import { UserWithRoles, CreateUserData, CredentialType } from '../types';
 
 @Injectable()
 export class UserService {
@@ -91,7 +86,7 @@ export class UserService {
 
   async findUserByIdentifier(
     identifier: string,
-  ): Promise<UserWithCredentials | null> {
+  ): Promise<UserWithRoles | null> {
     return await this.prisma.user.findFirst({
       where: {
         credentials: {

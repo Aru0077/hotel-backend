@@ -3,13 +3,12 @@ import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { RedisService } from '../../redis/redis.service';
 import { AppConfigService } from '../../config/config.service';
 import { SmsService } from '../../sms/sms.service';
-import { SendVerificationCodeDto } from '../dto/auth.dto';
-import { VerificationCodeType, VerificationCodePurpose } from '../../types';
+import { SendCodeDto } from '../dto/auth.dto';
+import { VerificationCodeType } from '../../types';
 
 interface VerificationCodeData {
   identifier: string;
   code: string;
-  purpose: VerificationCodePurpose;
   type: VerificationCodeType;
   createdAt: number;
   expiresAt: number;
@@ -28,8 +27,8 @@ export class VerificationCodeService {
   /**
    * 发送验证码
    */
-  async sendVerificationCode(dto: SendVerificationCodeDto): Promise<void> {
-    const { identifier, type } = this.extractIdentifierAndType(dto);
+  async sendVerificationCode(dto: SendCodeDto): Promise<void> {
+    const { identifier, type } = this.extractIdentifierAndType(dto.identifier);
 
     // 检查发送频率限制
     await this.checkRateLimit(identifier, type);
@@ -38,28 +37,22 @@ export class VerificationCodeService {
     const code = this.generateVerificationCode();
 
     // 存储验证码
-    await this.storeVerificationCode(identifier, code, dto.purpose, type);
+    await this.storeVerificationCode(identifier, code, type);
 
     // 设置发送频率限制
     await this.setRateLimit(identifier, type);
 
     // 发送验证码
-    await this.sendCode(identifier, code, dto.purpose, type);
+    await this.sendCode(identifier, code, type);
 
-    this.logger.log(
-      `验证码发送成功: ${this.maskIdentifier(identifier, type)}, 用途: ${dto.purpose}`,
-    );
+    this.logger.log(`验证码发送成功: ${this.maskIdentifier(identifier, type)}`);
   }
 
   /**
    * 验证验证码
    */
-  async verifyCode(
-    identifier: string,
-    code: string,
-    purpose: VerificationCodePurpose,
-  ): Promise<boolean> {
-    const cacheKey = this.buildCacheKey(identifier, purpose);
+  async verifyCode(identifier: string, code: string): Promise<boolean> {
+    const cacheKey = this.buildCacheKey(identifier);
     const storedData = await this.redis.get<VerificationCodeData>(
       cacheKey,
       true,
@@ -82,38 +75,39 @@ export class VerificationCodeService {
   /**
    * 清除验证码
    */
-  async clearVerificationCode(
-    identifier: string,
-    purpose: VerificationCodePurpose,
-  ): Promise<void> {
-    const cacheKey = this.buildCacheKey(identifier, purpose);
+  async clearVerificationCode(identifier: string): Promise<void> {
+    const cacheKey = this.buildCacheKey(identifier);
     await this.redis.del(cacheKey);
   }
+
+  // ============ 私有方法 ============
 
   /**
    * 提取标识符和类型
    */
-  private extractIdentifierAndType(dto: SendVerificationCodeDto): {
+  private extractIdentifierAndType(identifier: string): {
     identifier: string;
     type: VerificationCodeType;
   } {
-    if (dto.email) {
-      this.validateEmailFormat(dto.email);
+    // 邮箱正则
+    if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identifier)) {
+      this.validateEmailFormat(identifier);
       return {
-        identifier: dto.email,
+        identifier,
         type: VerificationCodeType.EMAIL,
       };
     }
 
-    if (dto.phone) {
-      this.validatePhoneFormat(dto.phone);
+    // 手机号正则（国内外）
+    if (/^(\+\d{1,3})?\d{10,14}$/.test(identifier.replace(/\s/g, ''))) {
+      this.validatePhoneFormat(identifier);
       return {
-        identifier: dto.phone,
+        identifier,
         type: VerificationCodeType.PHONE,
       };
     }
 
-    throw new BadRequestException('必须提供邮箱或手机号');
+    throw new BadRequestException('标识符必须是有效的邮箱或手机号');
   }
 
   /**
@@ -148,15 +142,13 @@ export class VerificationCodeService {
   private async storeVerificationCode(
     identifier: string,
     code: string,
-    purpose: VerificationCodePurpose,
     type: VerificationCodeType,
   ): Promise<void> {
-    const cacheKey = this.buildCacheKey(identifier, purpose);
+    const cacheKey = this.buildCacheKey(identifier);
     const now = Date.now();
     const data: VerificationCodeData = {
       identifier,
       code,
-      purpose,
       type,
       createdAt: now,
       expiresAt: now + 5 * 60 * 1000, // 5分钟过期
@@ -171,7 +163,6 @@ export class VerificationCodeService {
   private async sendCode(
     identifier: string,
     code: string,
-    purpose: VerificationCodePurpose,
     type: VerificationCodeType,
   ): Promise<void> {
     try {
@@ -179,7 +170,6 @@ export class VerificationCodeService {
         const result = await this.smsService.sendVerificationCodeSms({
           phoneNumber: identifier,
           code,
-          purpose,
         });
 
         if (!result.success) {
@@ -194,7 +184,7 @@ export class VerificationCodeService {
       }
     } catch (error) {
       // 发送失败时清除已存储的验证码
-      await this.clearVerificationCode(identifier, purpose);
+      await this.clearVerificationCode(identifier);
 
       this.logger.error(
         `验证码发送失败: ${this.maskIdentifier(identifier, type)}`,
@@ -217,11 +207,8 @@ export class VerificationCodeService {
   /**
    * 构建缓存键
    */
-  private buildCacheKey(
-    identifier: string,
-    purpose: VerificationCodePurpose,
-  ): string {
-    return `verification:${purpose}:${identifier}`;
+  private buildCacheKey(identifier: string): string {
+    return `verification:${identifier}`;
   }
 
   /**

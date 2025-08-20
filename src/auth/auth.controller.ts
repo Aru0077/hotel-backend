@@ -4,12 +4,7 @@ import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Public } from '@common/decorators/public.decorator';
 import { GetCurrentUser } from '@common/decorators/current-user.decorator';
 import { AuthService } from './auth.service';
-import {
-  RegisterDto,
-  LoginDto,
-  SendCodeDto,
-  RefreshTokenDto,
-} from './dto/auth.dto';
+import { AuthDto, SendCodeDto, RefreshTokenDto } from './dto/auth.dto';
 import { AuthTokenResponse, CurrentUser } from '../types';
 
 @ApiTags('认证')
@@ -23,7 +18,7 @@ export class AuthController {
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: '用户注册（自动识别认证方式）' })
   @ApiResponse({ status: 201, description: '注册成功' })
-  async register(@Body() dto: RegisterDto): Promise<AuthTokenResponse> {
+  async register(@Body() dto: AuthDto): Promise<AuthTokenResponse> {
     return this.authService.register(dto);
   }
 
@@ -33,7 +28,7 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '用户登录（自动识别认证方式）' })
   @ApiResponse({ status: 200, description: '登录成功' })
-  async login(@Body() dto: LoginDto): Promise<AuthTokenResponse> {
+  async login(@Body() dto: AuthDto): Promise<AuthTokenResponse> {
     return this.authService.login(dto);
   }
 

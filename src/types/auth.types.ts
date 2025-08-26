@@ -63,6 +63,29 @@ export interface SocialUserInfo {
   provider: 'facebook' | 'google';
 }
 
+// OAuth提供商特定类型
+export interface FacebookProfile {
+  id: string;
+  email?: string;
+  name?: string;
+  firstName?: string;
+  lastName?: string;
+  picture?: {
+    data: {
+      url: string;
+    };
+  };
+}
+
+export interface GoogleProfile {
+  id: string;
+  email?: string;
+  name?: string;
+  given_name?: string;
+  family_name?: string;
+  picture?: string;
+}
+
 // ============ 验证码相关类型 ============
 export interface VerificationCodeData {
   identifier: string;

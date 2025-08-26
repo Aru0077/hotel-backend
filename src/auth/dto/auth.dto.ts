@@ -17,7 +17,7 @@ export class AuthDto {
     description: '密码（与验证码二选一）',
     minLength: 8,
   })
-  @ValidateIf((o) => !o.verificationCode)
+  @ValidateIf((o: AuthDto) => !o.verificationCode)
   @IsString()
   @MinLength(8)
   password?: string;
@@ -26,7 +26,7 @@ export class AuthDto {
     description: '验证码（与密码二选一）',
     example: '123456',
   })
-  @ValidateIf((o) => !o.password)
+  @ValidateIf((o: AuthDto) => !o.password)
   @IsString()
   verificationCode?: string;
 

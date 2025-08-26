@@ -1,11 +1,27 @@
-// src/user/user.service.ts
-import { Injectable, BadRequestException } from '@nestjs/common';
+// src/user/user.service.ts - 重构后的用户服务
+import { Injectable, BadRequestException, Logger } from '@nestjs/common';
+import { RoleStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { UserWithRoles, CreateUserData, CredentialType } from '../types';
 
 @Injectable()
 export class UserService {
+  private readonly logger = new Logger(UserService.name);
+
   constructor(private readonly prisma: PrismaService) {}
+
+  // ============ 用户存在性检查 ============
+
+  async checkUserExists(
+    identifier: string,
+    type: CredentialType,
+  ): Promise<boolean> {
+    const whereCondition = this.buildWhereCondition(identifier, type);
+    const credential = await this.prisma.authCredential.findFirst({
+      where: whereCondition,
+    });
+    return Boolean(credential);
+  }
 
   // ============ 用户创建 ============
 
@@ -65,24 +81,14 @@ export class UserService {
     });
 
     if (!user) {
-      throw new Error('用户创建失败');
+      throw new BadRequestException('用户创建失败');
     }
 
+    this.logger.log(`用户创建成功: userId=${user.id}`);
     return user;
   }
 
-  // ============ 用户查询 ============
-
-  async checkUserExists(
-    identifier: string,
-    type: CredentialType,
-  ): Promise<boolean> {
-    const whereCondition = this.buildWhereCondition(identifier, type);
-    const credential = await this.prisma.authCredential.findFirst({
-      where: whereCondition,
-    });
-    return Boolean(credential);
-  }
+  // ============ 用户查询方法 ============
 
   async findUserByIdentifier(
     identifier: string,
@@ -97,17 +103,7 @@ export class UserService {
           ],
         },
       },
-      include: {
-        credentials: true,
-        roles: {
-          where: { status: 'ACTIVE' },
-          include: {
-            merchant: true,
-            customer: true,
-            admin: true,
-          },
-        },
-      },
+      include: this.getUserIncludeOptions(),
     });
   }
 
@@ -116,17 +112,7 @@ export class UserService {
       where: {
         credentials: { email },
       },
-      include: {
-        credentials: true,
-        roles: {
-          where: { status: 'ACTIVE' },
-          include: {
-            merchant: true,
-            customer: true,
-            admin: true,
-          },
-        },
-      },
+      include: this.getUserIncludeOptions(),
     });
   }
 
@@ -135,55 +121,125 @@ export class UserService {
       where: {
         credentials: { phone },
       },
-      include: {
-        credentials: true,
-        roles: {
-          where: { status: 'ACTIVE' },
-          include: {
-            merchant: true,
-            customer: true,
-            admin: true,
-          },
-        },
-      },
+      include: this.getUserIncludeOptions(),
     });
   }
 
   async findUserById(userId: number): Promise<UserWithRoles | null> {
     return await this.prisma.user.findUnique({
       where: { id: userId },
-      include: {
-        credentials: true,
-        roles: {
-          where: { status: 'ACTIVE' },
-          include: {
-            merchant: true,
-            customer: true,
-            admin: true,
-          },
-        },
-      },
+      include: this.getUserIncludeOptions(),
     });
   }
 
-  // ============ 用户更新 ============
+  async findUserByFacebookId(
+    facebookId: string,
+  ): Promise<UserWithRoles | null> {
+    return await this.prisma.user.findFirst({
+      where: {
+        credentials: { facebookId },
+      },
+      include: this.getUserIncludeOptions(),
+    });
+  }
+
+  async findUserByGoogleId(googleId: string): Promise<UserWithRoles | null> {
+    return await this.prisma.user.findFirst({
+      where: {
+        credentials: { googleId },
+      },
+      include: this.getUserIncludeOptions(),
+    });
+  }
+
+  // ============ 用户更新方法 ============
 
   async updateLastLoginTime(userId: number): Promise<void> {
-    await this.prisma.user.update({
-      where: { id: userId },
-      data: { lastLoginAt: new Date() },
-    });
+    const now = new Date();
 
-    // 同时更新认证凭证的最后登录时间
-    await this.prisma.authCredential.update({
-      where: { userId },
-      data: { lastLoginAt: new Date() },
-    });
+    await Promise.all([
+      this.prisma.user.update({
+        where: { id: userId },
+        data: { lastLoginAt: now },
+      }),
+      this.prisma.authCredential.update({
+        where: { userId },
+        data: { lastLoginAt: now },
+      }),
+    ]);
+
+    this.logger.log(`用户登录时间更新: userId=${userId}`);
   }
 
-  // ============ 私有辅助方法 ============
+  async updateUserCredentials(
+    userId: number,
+    data: {
+      hashedPassword?: string;
+      isEmailVerified?: boolean;
+      isPhoneVerified?: boolean;
+      isFacebookVerified?: boolean;
+      isGoogleVerified?: boolean;
+    },
+  ): Promise<void> {
+    await this.prisma.authCredential.update({
+      where: { userId },
+      data: {
+        ...data,
+        ...(data.hashedPassword && { passwordChanged: new Date() }),
+      },
+    });
 
-  private validateCreateUserData(data: CreateUserData): void {
+    this.logger.log(`用户凭证更新: userId=${userId}`);
+  }
+
+  // ============ 标识符检测与构建方法 ============
+
+  detectIdentifierType(identifier: string): 'username' | 'email' | 'phone' {
+    // 邮箱正则
+    if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identifier)) {
+      return 'email';
+    }
+    // 手机号正则（国内外）
+    if (/^(\+\d{1,3})?\d{10,14}$/.test(identifier.replace(/\s/g, ''))) {
+      return 'phone';
+    }
+    // 默认为用户名
+    return 'username';
+  }
+
+  buildCredentialsByType(
+    identifier: string,
+    type: 'username' | 'email' | 'phone',
+    isVerified: boolean,
+  ) {
+    const credentials = {
+      username: undefined as string | undefined,
+      email: undefined as string | undefined,
+      phone: undefined as string | undefined,
+      isEmailVerified: false,
+      isPhoneVerified: false,
+    };
+
+    switch (type) {
+      case 'email':
+        credentials.email = identifier;
+        credentials.isEmailVerified = isVerified;
+        break;
+      case 'phone':
+        credentials.phone = identifier;
+        credentials.isPhoneVerified = isVerified;
+        break;
+      case 'username':
+        credentials.username = identifier;
+        break;
+    }
+
+    return credentials;
+  }
+
+  // ============ 数据验证方法 ============
+
+  validateCreateUserData(data: CreateUserData): void {
     const hasIdentifier =
       data.username ??
       data.email ??
@@ -200,6 +256,57 @@ export class UserService {
     if (data.phone) this.validatePhone(data.phone);
   }
 
+  validateUsername(username: string): void {
+    const usernameRegex = /^[a-zA-Z0-9_]{3,50}$/;
+    if (!usernameRegex.test(username)) {
+      throw new BadRequestException(
+        '用户名格式不正确，只能包含字母、数字和下划线，长度3-50字符',
+      );
+    }
+  }
+
+  validateEmail(email: string): void {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      throw new BadRequestException('邮箱格式不正确');
+    }
+  }
+
+  validatePhone(phone: string): void {
+    const phoneRegex = /^1[3-9]\d{9}$|^\+86[1-9]\d{10}$|^\+\d{1,3}\d{4,14}$/;
+    if (!phoneRegex.test(phone)) {
+      throw new BadRequestException('手机号码格式不正确');
+    }
+  }
+
+  // ============ 工具方法 ============
+
+  maskIdentifier(
+    identifier: string,
+    type: 'username' | 'email' | 'phone',
+  ): string {
+    switch (type) {
+      case 'email':
+        return identifier.replace(/(.{1}).*(@.*)/, '$1***$2');
+      case 'phone':
+        if (identifier.startsWith('+86')) {
+          return identifier.replace(/(\+86\d{3})\d{4}(\d{4})/, '$1****$2');
+        } else if (identifier.startsWith('+')) {
+          return identifier.replace(/(\+\d{1,3}\d{2})\d*(\d{4})/, '$1****$2');
+        } else {
+          return identifier.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2');
+        }
+      case 'username':
+        return identifier.length > 4
+          ? identifier.slice(0, 2) + '***' + identifier.slice(-2)
+          : identifier.slice(0, 1) + '***';
+      default:
+        return identifier.slice(0, 3) + '***';
+    }
+  }
+
+  // ============ 私有辅助方法 ============
+
   private buildWhereCondition(
     identifier: string,
     type: CredentialType,
@@ -215,26 +322,17 @@ export class UserService {
     return { [conditions[type]]: identifier };
   }
 
-  private validateUsername(username: string): void {
-    const usernameRegex = /^[a-zA-Z0-9_]{3,50}$/;
-    if (!usernameRegex.test(username)) {
-      throw new BadRequestException(
-        '用户名格式不正确，只能包含字母、数字和下划线，长度3-50字符',
-      );
-    }
-  }
-
-  private validateEmail(email: string): void {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      throw new BadRequestException('邮箱格式不正确');
-    }
-  }
-
-  private validatePhone(phone: string): void {
-    const phoneRegex = /^1[3-9]\d{9}$|^\+86[1-9]\d{10}$|^\+\d{1,3}\d{4,14}$/;
-    if (!phoneRegex.test(phone)) {
-      throw new BadRequestException('手机号码格式不正确');
-    }
+  private getUserIncludeOptions() {
+    return {
+      credentials: true,
+      roles: {
+        where: { status: RoleStatus.ACTIVE },
+        include: {
+          merchant: true,
+          customer: true,
+          admin: true,
+        },
+      },
+    };
   }
 }

@@ -29,6 +29,8 @@ export {
   AuthTokenResponse,
   AuthUserInfo,
   SocialUserInfo,
+  FacebookProfile,
+  GoogleProfile,
   VerificationCodeData,
   ServiceError,
   ServiceResult,

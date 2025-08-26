@@ -6,6 +6,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is a hotel management backend built with NestJS, featuring a multi-role user system with comprehensive authentication. The system serves three independent frontend applications corresponding to three user roles: ADMIN (Administrator), MERCHANT (Merchant), and CUSTOMER (Customer).
 
+### 🚀 Development Status
+
+**Current Stage: Authentication System Completed ✅**
+- ✅ Multi-role user authentication system
+- ✅ JWT token management with refresh mechanism
+- ✅ SMS/Email verification code system
+- ✅ OAuth integration (Facebook/Google)
+- ✅ Password security and validation
+- ✅ Role-based access control framework
+- ✅ Comprehensive API documentation
+
+**Next Stage: Business Feature Development 🔄**
+Starting core business functionality development based on three-role system requirements. See [BUSINESS_ROADMAP.md](./BUSINESS_ROADMAP.md) for detailed development plan.
+
 **Important Architecture Decisions:**
 - **Single Role Per User**: The system does not support role switching functionality. Each user maintains a single role identity throughout their entire lifecycle.
 - **Role-Required Authentication**: Role information is a mandatory parameter in all login and registration endpoints.
@@ -465,3 +479,170 @@ AppModule (根模块)
 - **数据迁移**: Prisma Migration支持平滑升级
 
 这个项目展现了企业级NestJS应用的标准架构模式，具备高可维护性、可扩展性和安全性，适用于多租户SaaS系统的开发需求。
+
+## 业务功能开发指导原则
+
+### 开发原则
+1. **角色驱动设计**: 所有业务功能必须基于角色权限设计，确保数据安全和访问控制
+2. **API优先**: 采用API-First设计理念，先设计接口再实现业务逻辑
+3. **数据一致性**: 使用Prisma事务确保复杂业务操作的数据一致性
+4. **渐进式开发**: 按角色优先级顺序开发，先完成核心功能再扩展
+5. **测试驱动**: 每个业务模块必须包含单元测试和集成测试
+
+### 架构规范
+1. **模块结构**: 每个业务模块包含 controller、service、dto、types
+2. **数据访问**: 统一使用PrismaService，禁止直接SQL查询
+3. **异常处理**: 使用NestJS内置异常类，统一错误响应格式
+4. **日志记录**: 关键业务操作必须记录操作日志
+5. **权限验证**: 使用装饰器和守卫实现细粒度权限控制
+
+### 代码规范
+
+#### 命名约定
+- **文件命名**: kebab-case (hotel-room.service.ts)
+- **类命名**: PascalCase (HotelRoomService)
+- **方法/变量**: camelCase (findAvailableRooms)
+- **常量**: UPPER_SNAKE_CASE (MAX_ROOM_CAPACITY)
+- **接口**: PascalCase with 'I' prefix (IHotelRoom)
+
+#### 目录结构
+```
+src/
+├── modules/
+│   ├── hotel/
+│   │   ├── hotel.controller.ts
+│   │   ├── hotel.service.ts
+│   │   ├── hotel.module.ts
+│   │   ├── dto/
+│   │   │   ├── create-hotel.dto.ts
+│   │   │   └── update-hotel.dto.ts
+│   │   ├── entities/
+│   │   │   └── hotel.entity.ts
+│   │   └── types/
+│   │       └── hotel.types.ts
+│   └── room/
+│       ├── room.controller.ts
+│       ├── room.service.ts
+│       └── ...
+```
+
+#### DTO设计规范
+- 使用class-validator进行数据验证
+- 继承PickType/OmitType减少重复代码
+- 添加Swagger装饰器完善API文档
+
+```typescript
+export class CreateHotelDto {
+  @ApiProperty({ description: '酒店名称', example: '豪华大酒店' })
+  @IsString()
+  @MinLength(2)
+  @MaxLength(100)
+  name: string;
+
+  @ApiProperty({ description: '酒店描述' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  description?: string;
+}
+```
+
+#### Service层规范
+- 方法命名语义化: find, create, update, delete, check
+- 复杂查询封装为独立方法
+- 使用Prisma事务处理复杂业务逻辑
+- 添加适当的日志记录
+
+```typescript
+@Injectable()
+export class HotelService {
+  private readonly logger = new Logger(HotelService.name);
+
+  constructor(private readonly prisma: PrismaService) {}
+
+  async createHotel(merchantId: number, dto: CreateHotelDto): Promise<Hotel> {
+    const hotel = await this.prisma.$transaction(async (tx) => {
+      // 业务逻辑实现
+      const newHotel = await tx.hotel.create({
+        data: { ...dto, merchantId }
+      });
+      
+      this.logger.log(`酒店创建成功: hotelId=${newHotel.id}, merchantId=${merchantId}`);
+      return newHotel;
+    });
+
+    return hotel;
+  }
+}
+```
+
+#### Controller层规范
+- 使用角色守卫控制接口访问
+- 统一使用装饰器获取当前用户信息
+- 完善的Swagger文档注释
+- 标准的HTTP状态码使用
+
+```typescript
+@ApiTags('酒店管理')
+@Controller('hotels')
+@UseGuards(RolesGuard)
+export class HotelController {
+  constructor(private readonly hotelService: HotelService) {}
+
+  @Post()
+  @Roles(RoleType.MERCHANT)
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: '创建酒店' })
+  @ApiResponse({ status: 201, description: '酒店创建成功' })
+  async createHotel(
+    @GetCurrentUser() user: CurrentUser,
+    @Body() dto: CreateHotelDto
+  ): Promise<Hotel> {
+    return this.hotelService.createHotel(user.userId, dto);
+  }
+}
+```
+
+#### 错误处理规范
+- 使用具体的异常类型
+- 提供有意义的错误信息
+- 不暴露敏感的系统信息
+
+```typescript
+// 好的错误处理
+if (!hotel) {
+  throw new NotFoundException('指定的酒店不存在或已被删除');
+}
+
+if (hotel.merchantId !== user.userId) {
+  throw new ForbiddenException('您没有权限操作此酒店');
+}
+```
+
+#### 测试规范
+- 每个Service方法编写单元测试
+- Controller编写集成测试
+- 使用测试数据库进行E2E测试
+- 达到80%以上的代码覆盖率
+
+```typescript
+describe('HotelService', () => {
+  let service: HotelService;
+  let prisma: PrismaService;
+
+  beforeEach(async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [HotelService, PrismaService],
+    }).compile();
+
+    service = module.get<HotelService>(HotelService);
+    prisma = module.get<PrismaService>(PrismaService);
+  });
+
+  describe('createHotel', () => {
+    it('should create hotel successfully', async () => {
+      // 测试实现
+    });
+  });
+});
+```

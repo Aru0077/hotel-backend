@@ -89,8 +89,8 @@ export class AuthService {
       }
     }
 
-    // 构建用户数据 - Merchant默认为待审核状态
-    const roleStatus = dto.roleType === 'MERCHANT' ? 'INACTIVE' : 'ACTIVE';
+    // 构建用户数据 - 所有角色默认为ACTIVE状态
+    const roleStatus = 'ACTIVE';
     const userData: CreateUserData = {
       roleType: dto.roleType,
       roleStatus,
@@ -169,7 +169,7 @@ export class AuthService {
 
     if (!roleCheck.hasRole) {
       // 首次登录该角色端，自动创建角色
-      const roleStatus = dto.roleType === 'MERCHANT' ? 'INACTIVE' : 'ACTIVE';
+      const roleStatus = 'ACTIVE';
       await this.userService.addRoleToUser(user.id, dto.roleType, {
         status: roleStatus,
       });
@@ -177,13 +177,6 @@ export class AuthService {
       this.logger.log(
         `首次登录自动创建角色: userId=${user.id}, roleType=${dto.roleType}, status=${roleStatus}`,
       );
-
-      // 如果是商家角色，提示待审核
-      if (dto.roleType === 'MERCHANT') {
-        throw new UnauthorizedException(
-          '您的商家角色已创建，但需要管理员审核后才能使用，请联系管理员',
-        );
-      }
 
       // 重新获取用户信息（包含新创建的角色）
       user = await this.userService.findUserById(user.id);
@@ -193,11 +186,7 @@ export class AuthService {
     } else {
       // 检查角色状态
       if (roleCheck.roleStatus === 'INACTIVE') {
-        if (dto.roleType === 'MERCHANT') {
-          throw new UnauthorizedException('您的商家账号待审核，请联系管理员');
-        } else {
-          throw new UnauthorizedException('您的账号已被禁用，请联系管理员');
-        }
+        throw new UnauthorizedException('您的账号已被禁用，请联系管理员');
       }
 
       if (roleCheck.roleStatus === 'SUSPENDED') {

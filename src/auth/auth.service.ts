@@ -19,7 +19,9 @@ import {
 import { PasswordService } from './services/password.service';
 import { TokenService } from './services/token.service';
 import { VerificationCodeService } from './services/verification-code.service';
+import { OAuthService } from './services/oauth.service';
 import { UserService } from '../user/user.service';
+import { ValidatorsUtil } from '../common/utils/validators.util';
 
 @Injectable()
 export class AuthService {
@@ -30,15 +32,14 @@ export class AuthService {
     private readonly passwordService: PasswordService,
     private readonly tokenService: TokenService,
     private readonly verificationCodeService: VerificationCodeService,
+    private readonly oauthService: OAuthService,
   ) {}
 
   /**
    * 统一注册方法
    */
   async register(dto: AuthDto): Promise<AuthTokenResponse> {
-    const identifierType = this.userService.detectIdentifierType(
-      dto.identifier,
-    );
+    const identifierType = ValidatorsUtil.detectIdentifierType(dto.identifier);
 
     // 检查用户是否已存在
     const existingUser = await this.userService.findUserByIdentifier(
@@ -112,7 +113,7 @@ export class AuthService {
     }
 
     this.logger.log(
-      `用户注册成功: ${this.userService.maskIdentifier(dto.identifier, identifierType)}, 角色: ${ROLE_TYPE_CHINESE[dto.roleType]}`,
+      `用户注册成功: ${ValidatorsUtil.maskIdentifier(dto.identifier, identifierType)}, 角色: ${ROLE_TYPE_CHINESE[dto.roleType]}`,
     );
 
     return this.generateTokens(user);
@@ -292,24 +293,7 @@ export class AuthService {
     facebookId: string,
     profile: FacebookProfile,
   ): Promise<UserWithRoles> {
-    let user = await this.userService.findUserByFacebookId(facebookId);
-
-    if (!user) {
-      // 创建新用户
-      const userData: CreateUserData = {
-        facebookId,
-        isFacebookVerified: true,
-        roleType: 'CUSTOMER', // 默认角色
-        email: profile.email,
-        isEmailVerified: !!profile.email,
-      };
-      user = await this.userService.createUser(userData);
-    } else {
-      // 更新登录时间
-      await this.userService.updateLastLoginTime(user.id);
-    }
-
-    return user;
+    return this.oauthService.authenticateWithFacebook(facebookId, profile);
   }
 
   /**
@@ -319,24 +303,7 @@ export class AuthService {
     googleId: string,
     profile: GoogleProfile,
   ): Promise<UserWithRoles> {
-    let user = await this.userService.findUserByGoogleId(googleId);
-
-    if (!user) {
-      // 创建新用户
-      const userData: CreateUserData = {
-        googleId,
-        isGoogleVerified: true,
-        roleType: 'CUSTOMER', // 默认角色
-        email: profile.email,
-        isEmailVerified: !!profile.email,
-      };
-      user = await this.userService.createUser(userData);
-    } else {
-      // 更新登录时间
-      await this.userService.updateLastLoginTime(user.id);
-    }
-
-    return user;
+    return this.oauthService.authenticateWithGoogle(googleId, profile);
   }
 
   // ============ 私有方法 ============

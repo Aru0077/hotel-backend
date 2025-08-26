@@ -131,16 +131,12 @@ model AuthCredential {
   // 关联关系
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  // 索引优化
+  // 索引优化 - 移除重复的复合索引
   @@index([email])
   @@index([phone])
   @@index([username])
   @@index([facebookId])
   @@index([googleId])
-  @@index([isEmailVerified])
-  @@index([isPhoneVerified])
-  @@index([email, isEmailVerified])
-  @@index([phone, isPhoneVerified])
   @@map("auth_credentials")
 }
 

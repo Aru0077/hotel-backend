@@ -5,6 +5,7 @@ import { AppConfigService } from '../../config/config.service';
 import { SmsService } from '../../sms/sms.service';
 import { SendCodeDto } from '../dto/auth.dto';
 import { VerificationCodeType } from '../../types';
+import { ValidatorsUtil } from '../../common/utils/validators.util';
 
 interface VerificationCodeData {
   identifier: string;
@@ -45,7 +46,10 @@ export class VerificationCodeService {
     // 发送验证码
     await this.sendCode(identifier, code, type);
 
-    this.logger.log(`验证码发送成功: ${this.maskIdentifier(identifier, type)}`);
+    const maskType = type === VerificationCodeType.EMAIL ? 'email' : 'phone';
+    this.logger.log(
+      `验证码发送成功: ${ValidatorsUtil.maskIdentifier(identifier, maskType)}`,
+    );
   }
 
   /**
@@ -89,18 +93,18 @@ export class VerificationCodeService {
     identifier: string;
     type: VerificationCodeType;
   } {
-    // 邮箱正则
-    if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identifier)) {
-      this.validateEmailFormat(identifier);
+    const detectedType = ValidatorsUtil.detectIdentifierType(identifier);
+
+    if (detectedType === 'email') {
+      ValidatorsUtil.validateEmail(identifier);
       return {
         identifier,
         type: VerificationCodeType.EMAIL,
       };
     }
 
-    // 手机号正则（国内外）
-    if (/^(\+\d{1,3})?\d{10,14}$/.test(identifier.replace(/\s/g, ''))) {
-      this.validatePhoneFormat(identifier);
+    if (detectedType === 'phone') {
+      ValidatorsUtil.validatePhone(identifier);
       return {
         identifier,
         type: VerificationCodeType.PHONE,
@@ -187,8 +191,9 @@ export class VerificationCodeService {
       // 发送失败时清除已存储的验证码
       await this.clearVerificationCode(identifier);
 
+      const maskType = type === VerificationCodeType.EMAIL ? 'email' : 'phone';
       this.logger.error(
-        `验证码发送失败: ${this.maskIdentifier(identifier, type)}`,
+        `验证码发送失败: ${ValidatorsUtil.maskIdentifier(identifier, maskType)}`,
         error instanceof Error ? error.stack : error,
       );
 
@@ -210,45 +215,5 @@ export class VerificationCodeService {
    */
   private buildCacheKey(identifier: string): string {
     return `verification:${identifier}`;
-  }
-
-  /**
-   * 验证邮箱格式
-   */
-  private validateEmailFormat(email: string): void {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      throw new BadRequestException('邮箱格式不正确');
-    }
-  }
-
-  /**
-   * 验证手机号格式
-   */
-  private validatePhoneFormat(phone: string): void {
-    const phoneRegex = /^1[3-9]\d{9}$|^\+86[1-9]\d{10}$|^\+\d{1,3}\d{4,14}$/;
-    if (!phoneRegex.test(phone)) {
-      throw new BadRequestException('手机号码格式不正确');
-    }
-  }
-
-  /**
-   * 标识符脱敏
-   */
-  private maskIdentifier(
-    identifier: string,
-    type: VerificationCodeType,
-  ): string {
-    if (type === VerificationCodeType.EMAIL) {
-      return identifier.replace(/(.{1}).*(@.*)/, '$1***$2');
-    } else {
-      if (identifier.startsWith('+86')) {
-        return identifier.replace(/(\+86\d{3})\d{4}(\d{4})/, '$1****$2');
-      } else if (identifier.startsWith('+')) {
-        return identifier.replace(/(\+\d{1,3}\d{2})\d*(\d{4})/, '$1****$2');
-      } else {
-        return identifier.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2');
-      }
-    }
   }
 }

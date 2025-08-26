@@ -5,6 +5,7 @@ import * as $OpenApi from '@alicloud/openapi-client';
 import Credential from '@alicloud/credentials';
 import * as $Util from '@alicloud/tea-util';
 import { AppConfigService } from '../config/config.service';
+import { ValidatorsUtil } from '../common/utils/validators.util';
 
 export interface SendSmsOptions {
   phoneNumber: string;
@@ -97,7 +98,7 @@ export class SmsService {
       // 检查响应
       if (response.body?.code === 'OK') {
         this.logger.log(
-          `短信发送成功: ${this.maskPhoneNumber(options.phoneNumber)}, ` +
+          `短信发送成功: ${ValidatorsUtil.maskIdentifier(options.phoneNumber, 'phone')}, ` +
             `BizId: ${response.body.bizId}, 耗时: ${duration}ms`,
         );
 
@@ -109,7 +110,7 @@ export class SmsService {
         };
       } else {
         this.logger.error(
-          `短信发送失败: ${this.maskPhoneNumber(options.phoneNumber)}, ` +
+          `短信发送失败: ${ValidatorsUtil.maskIdentifier(options.phoneNumber, 'phone')}, ` +
             `错误码: ${response.body?.code}, 错误信息: ${response.body?.message}`,
         );
 
@@ -143,8 +144,8 @@ export class SmsService {
     }
 
     // 验证参数
-    this.validatePhoneNumber(options.phoneNumber);
-    this.validateVerificationCode(options.code);
+    ValidatorsUtil.validatePhone(options.phoneNumber);
+    ValidatorsUtil.validateVerificationCode(options.code);
 
     const result = await this.sendSms({
       phoneNumber: options.phoneNumber,
@@ -156,7 +157,7 @@ export class SmsService {
 
     if (result.success) {
       this.logger.log(
-        `验证码短信发送成功: ${this.maskPhoneNumber(options.phoneNumber)}, ` +
+        `验证码短信发送成功: ${ValidatorsUtil.maskIdentifier(options.phoneNumber, 'phone')}, ` +
           `BizId: ${result.bizId}`,
       );
     }
@@ -174,7 +175,7 @@ export class SmsService {
   ): SmsResponse {
     if (error instanceof Error) {
       this.logger.error(
-        `短信发送异常: ${this.maskPhoneNumber(phoneNumber)}, ` +
+        `短信发送异常: ${ValidatorsUtil.maskIdentifier(phoneNumber, 'phone')}, ` +
           `错误: ${error.message}, 耗时: ${duration}ms`,
         error.stack,
       );
@@ -205,7 +206,7 @@ export class SmsService {
     }
 
     this.logger.error(
-      `短信发送未知异常: ${this.maskPhoneNumber(phoneNumber)}, 耗时: ${duration}ms`,
+      `短信发送未知异常: ${ValidatorsUtil.maskIdentifier(phoneNumber, 'phone')}, 耗时: ${duration}ms`,
       error,
     );
 
@@ -214,52 +215,6 @@ export class SmsService {
       message: '未知错误，请稍后重试',
       code: 'UNKNOWN_ERROR',
     };
-  }
-
-  /**
-   * 验证手机号格式
-   */
-  private validatePhoneNumber(phoneNumber: string): void {
-    if (!phoneNumber) {
-      throw new BadRequestException('手机号码不能为空');
-    }
-
-    const phoneRegex = /^1[3-9]\d{9}$|^\+86[1-9]\d{10}$|^\+\d{1,3}\d{4,14}$/;
-    if (!phoneRegex.test(phoneNumber)) {
-      throw new BadRequestException('手机号码格式不正确');
-    }
-  }
-
-  /**
-   * 验证验证码格式
-   */
-  private validateVerificationCode(code: string): void {
-    if (!code) {
-      throw new BadRequestException('验证码不能为空');
-    }
-
-    if (code.length < 4 || code.length > 8) {
-      throw new BadRequestException('验证码长度应在4-8位之间');
-    }
-
-    if (!/^\d+$/.test(code)) {
-      throw new BadRequestException('验证码只能包含数字');
-    }
-  }
-
-  /**
-   * 手机号脱敏
-   */
-  private maskPhoneNumber(phoneNumber: string): string {
-    if (!phoneNumber) return '';
-
-    if (phoneNumber.startsWith('+86')) {
-      return phoneNumber.replace(/(\+86\d{3})\d{4}(\d{4})/, '$1****$2');
-    } else if (phoneNumber.startsWith('+')) {
-      return phoneNumber.replace(/(\+\d{1,3}\d{2})\d*(\d{4})/, '$1****$2');
-    } else {
-      return phoneNumber.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2');
-    }
   }
 
   /**

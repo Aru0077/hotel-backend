@@ -3,6 +3,7 @@ import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { RoleStatus, RoleType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { UserWithRoles, CreateUserData, CredentialType } from '../types';
+import { ValidatorsUtil } from '../common/utils/validators.util';
 
 @Injectable()
 export class UserService {
@@ -273,19 +274,6 @@ export class UserService {
 
   // ============ 标识符检测与构建方法 ============
 
-  detectIdentifierType(identifier: string): 'username' | 'email' | 'phone' {
-    // 邮箱正则
-    if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identifier)) {
-      return 'email';
-    }
-    // 手机号正则（国内外）
-    if (/^(\+\d{1,3})?\d{10,14}$/.test(identifier.replace(/\s/g, ''))) {
-      return 'phone';
-    }
-    // 默认为用户名
-    return 'username';
-  }
-
   buildCredentialsByType(
     identifier: string,
     type: 'username' | 'email' | 'phone',
@@ -330,59 +318,12 @@ export class UserService {
       throw new BadRequestException('至少需要提供一个身份标识符');
     }
 
-    if (data.username) this.validateUsername(data.username);
-    if (data.email) this.validateEmail(data.email);
-    if (data.phone) this.validatePhone(data.phone);
-  }
-
-  validateUsername(username: string): void {
-    const usernameRegex = /^[a-zA-Z0-9_]{3,50}$/;
-    if (!usernameRegex.test(username)) {
-      throw new BadRequestException(
-        '用户名格式不正确，只能包含字母、数字和下划线，长度3-50字符',
-      );
-    }
-  }
-
-  validateEmail(email: string): void {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      throw new BadRequestException('邮箱格式不正确');
-    }
-  }
-
-  validatePhone(phone: string): void {
-    const phoneRegex = /^1[3-9]\d{9}$|^\+86[1-9]\d{10}$|^\+\d{1,3}\d{4,14}$/;
-    if (!phoneRegex.test(phone)) {
-      throw new BadRequestException('手机号码格式不正确');
-    }
+    if (data.username) ValidatorsUtil.validateUsername(data.username);
+    if (data.email) ValidatorsUtil.validateEmail(data.email);
+    if (data.phone) ValidatorsUtil.validatePhone(data.phone);
   }
 
   // ============ 工具方法 ============
-
-  maskIdentifier(
-    identifier: string,
-    type: 'username' | 'email' | 'phone',
-  ): string {
-    switch (type) {
-      case 'email':
-        return identifier.replace(/(.{1}).*(@.*)/, '$1***$2');
-      case 'phone':
-        if (identifier.startsWith('+86')) {
-          return identifier.replace(/(\+86\d{3})\d{4}(\d{4})/, '$1****$2');
-        } else if (identifier.startsWith('+')) {
-          return identifier.replace(/(\+\d{1,3}\d{2})\d*(\d{4})/, '$1****$2');
-        } else {
-          return identifier.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2');
-        }
-      case 'username':
-        return identifier.length > 4
-          ? identifier.slice(0, 2) + '***' + identifier.slice(-2)
-          : identifier.slice(0, 1) + '***';
-      default:
-        return identifier.slice(0, 3) + '***';
-    }
-  }
 
   // ============ 私有辅助方法 ============
 

@@ -16,6 +16,7 @@ import { AuthService } from './auth.service';
 import { PasswordService } from './services/password.service';
 import { VerificationCodeService } from './services/verification-code.service';
 import { TokenService } from './services/token.service';
+import { OAuthService } from './services/oauth.service';
 
 // Guards
 import { FacebookAuthGuard } from './guards/facebook-auth.guard';
@@ -46,6 +47,7 @@ import { LocalAuthGuard } from './guards/local-auth.guard';
     PasswordService,
     VerificationCodeService,
     TokenService,
+    OAuthService,
 
     // Passport策略
     JwtStrategy,
@@ -63,6 +65,7 @@ import { LocalAuthGuard } from './guards/local-auth.guard';
     PasswordService,
     VerificationCodeService,
     TokenService,
+    OAuthService,
   ],
 })
 export class AuthModule {}

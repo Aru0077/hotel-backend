@@ -152,3 +152,10 @@ export interface CreateUserData {
   customerData?: Omit<Prisma.CustomerCreateInput, 'userRole'>;
   adminData?: Omit<Prisma.AdminCreateInput, 'userRole'>;
 }
+
+// ============ 角色类型中文映射 ============
+export const ROLE_TYPE_CHINESE: Record<RoleType, string> = {
+  ADMIN: '管理员',
+  MERCHANT: '商家',
+  CUSTOMER: '客户',
+};

@@ -1,6 +1,6 @@
 // src/user/user.service.ts - 重构后的用户服务
 import { Injectable, BadRequestException, Logger } from '@nestjs/common';
-import { RoleStatus } from '@prisma/client';
+import { RoleStatus, RoleType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { UserWithRoles, CreateUserData, CredentialType } from '../types';
 
@@ -190,6 +190,85 @@ export class UserService {
     });
 
     this.logger.log(`用户凭证更新: userId=${userId}`);
+  }
+
+  // ============ 角色管理方法 ============
+
+  /**
+   * 检查用户是否已有某个角色
+   */
+  async userHasRole(userId: number, roleType: RoleType): Promise<boolean> {
+    const role = await this.prisma.userRole.findFirst({
+      where: {
+        userId,
+        roleType,
+        status: RoleStatus.ACTIVE,
+      },
+    });
+    return Boolean(role);
+  }
+
+  /**
+   * 为现有用户添加新角色
+   */
+  async addRoleToUser(
+    userId: number,
+    roleType: RoleType,
+    options?: {
+      status?: RoleStatus;
+      expiresAt?: Date;
+    },
+  ): Promise<UserWithRoles> {
+    // 检查用户是否已有该角色
+    const hasRole = await this.userHasRole(userId, roleType);
+    if (hasRole) {
+      throw new BadRequestException(`用户已拥有 ${roleType} 角色`);
+    }
+
+    // 添加新角色
+    await this.prisma.userRole.create({
+      data: {
+        userId,
+        roleType,
+        status: options?.status ?? RoleStatus.ACTIVE,
+        expiresAt: options?.expiresAt,
+      },
+    });
+
+    this.logger.log(`为用户添加角色: userId=${userId}, roleType=${roleType}`);
+
+    // 返回更新后的用户信息
+    const user = await this.findUserById(userId);
+    if (!user) {
+      throw new BadRequestException('用户不存在');
+    }
+
+    return user;
+  }
+
+  /**
+   * 检查用户是否拥有指定角色（包含非活跃状态）
+   */
+  async checkUserRole(
+    userId: number,
+    roleType: RoleType,
+  ): Promise<{
+    hasRole: boolean;
+    roleStatus?: RoleStatus;
+    roleId?: number;
+  }> {
+    const role = await this.prisma.userRole.findFirst({
+      where: {
+        userId,
+        roleType,
+      },
+    });
+
+    return {
+      hasRole: Boolean(role),
+      roleStatus: role?.status,
+      roleId: role?.id,
+    };
   }
 
   // ============ 标识符检测与构建方法 ============

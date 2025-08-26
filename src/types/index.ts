@@ -20,6 +20,7 @@ export {
   CreateUserData,
   VerificationCodeType,
   CredentialType,
+  ROLE_TYPE_CHINESE,
 } from './core.types';
 
 // 认证类型导出

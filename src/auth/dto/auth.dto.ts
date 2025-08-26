@@ -49,6 +49,42 @@ export class SendCodeDto {
   identifier: string;
 }
 
+// 登录DTO（用于指定角色登录）
+export class LoginDto {
+  @ApiProperty({
+    description: '用户凭证（用户名/邮箱/手机号）',
+    example: 'john@example.com',
+  })
+  @IsString()
+  @MinLength(3)
+  identifier: string;
+
+  @ApiPropertyOptional({
+    description: '密码（与验证码二选一）',
+    minLength: 8,
+  })
+  @ValidateIf((o: LoginDto) => !o.verificationCode)
+  @IsString()
+  @MinLength(8)
+  password?: string;
+
+  @ApiPropertyOptional({
+    description: '验证码（与密码二选一）',
+    example: '123456',
+  })
+  @ValidateIf((o: LoginDto) => !o.password)
+  @IsString()
+  verificationCode?: string;
+
+  @ApiProperty({
+    description: '要登录的角色类型',
+    enum: RoleType,
+    example: RoleType.CUSTOMER,
+  })
+  @IsEnum(RoleType)
+  roleType: RoleType;
+}
+
 // 刷新令牌DTO
 export class RefreshTokenDto {
   @ApiProperty({ description: '刷新令牌' })

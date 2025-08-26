@@ -4,7 +4,12 @@ import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Public } from '@common/decorators/public.decorator';
 import { GetCurrentUser } from '@common/decorators/current-user.decorator';
 import { AuthService } from './auth.service';
-import { AuthDto, SendCodeDto, RefreshTokenDto } from './dto/auth.dto';
+import {
+  AuthDto,
+  LoginDto,
+  SendCodeDto,
+  RefreshTokenDto,
+} from './dto/auth.dto';
 import { AuthTokenResponse, CurrentUser } from '../types';
 
 @ApiTags('认证')
@@ -22,13 +27,13 @@ export class AuthController {
     return this.authService.register(dto);
   }
 
-  // 统一登录端点 - 自动识别认证方式
+  // 统一登录端点 - 自动识别认证方式，支持角色验证
   @Public()
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: '用户登录（自动识别认证方式）' })
+  @ApiOperation({ summary: '用户登录（支持角色验证）' })
   @ApiResponse({ status: 200, description: '登录成功' })
-  async login(@Body() dto: AuthDto): Promise<AuthTokenResponse> {
+  async login(@Body() dto: LoginDto): Promise<AuthTokenResponse> {
     return this.authService.login(dto);
   }
 

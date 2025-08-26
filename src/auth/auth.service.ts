@@ -6,7 +6,7 @@ import {
   ConflictException,
   Logger,
 } from '@nestjs/common';
-import { AuthDto, SendCodeDto } from './dto/auth.dto';
+import { AuthDto, LoginDto, SendCodeDto } from './dto/auth.dto';
 import {
   AuthTokenResponse,
   CreateUserData,
@@ -14,6 +14,7 @@ import {
   UserWithRoles,
   FacebookProfile,
   GoogleProfile,
+  ROLE_TYPE_CHINESE,
 } from '../types';
 import { PasswordService } from './services/password.service';
 import { TokenService } from './services/token.service';
@@ -40,12 +41,30 @@ export class AuthService {
     );
 
     // 检查用户是否已存在
-    if (
-      await this.userService.checkUserExists(dto.identifier, identifierType)
-    ) {
-      throw new ConflictException('用户已存在');
+    const existingUser = await this.userService.findUserByIdentifier(
+      dto.identifier,
+    );
+
+    if (existingUser) {
+      // 用户已存在，检查是否已有该角色
+      const hasRole = await this.userService.userHasRole(
+        existingUser.id,
+        dto.roleType,
+      );
+
+      if (hasRole) {
+        throw new ConflictException(
+          `该账号已注册为${ROLE_TYPE_CHINESE[dto.roleType]}角色`,
+        );
+      }
+
+      // 提示用户使用已有账号登录
+      throw new ConflictException(
+        `该手机号已注册，请使用原密码登录${ROLE_TYPE_CHINESE[dto.roleType]}端，系统将自动创建${ROLE_TYPE_CHINESE[dto.roleType]}角色信息`,
+      );
     }
 
+    // 用户不存在，创建新用户（原有逻辑）
     // 验证码注册
     if (dto.verificationCode) {
       const isValid = await this.verificationCodeService.verifyCode(
@@ -69,9 +88,11 @@ export class AuthService {
       }
     }
 
-    // 构建用户数据
+    // 构建用户数据 - Merchant默认为待审核状态
+    const roleStatus = dto.roleType === 'MERCHANT' ? 'INACTIVE' : 'ACTIVE';
     const userData: CreateUserData = {
       roleType: dto.roleType,
+      roleStatus,
       hashedPassword: dto.password
         ? await this.passwordService.hashPassword(dto.password)
         : undefined,
@@ -91,16 +112,16 @@ export class AuthService {
     }
 
     this.logger.log(
-      `用户注册成功: ${this.userService.maskIdentifier(dto.identifier, identifierType)}, 角色: ${dto.roleType}`,
+      `用户注册成功: ${this.userService.maskIdentifier(dto.identifier, identifierType)}, 角色: ${ROLE_TYPE_CHINESE[dto.roleType]}`,
     );
 
     return this.generateTokens(user);
   }
 
   /**
-   * 统一登录方法
+   * 统一登录方法（支持角色验证）
    */
-  async login(dto: AuthDto): Promise<AuthTokenResponse> {
+  async login(dto: LoginDto): Promise<AuthTokenResponse> {
     let user: UserWithRoles | null = null;
 
     if (dto.verificationCode) {
@@ -139,14 +160,64 @@ export class AuthService {
       }
     }
 
+    // 验证用户是否拥有指定角色
+    const roleCheck = await this.userService.checkUserRole(
+      user.id,
+      dto.roleType,
+    );
+
+    if (!roleCheck.hasRole) {
+      // 首次登录该角色端，自动创建角色
+      const roleStatus = dto.roleType === 'MERCHANT' ? 'INACTIVE' : 'ACTIVE';
+      await this.userService.addRoleToUser(user.id, dto.roleType, {
+        status: roleStatus,
+      });
+
+      this.logger.log(
+        `首次登录自动创建角色: userId=${user.id}, roleType=${dto.roleType}, status=${roleStatus}`,
+      );
+
+      // 如果是商家角色，提示待审核
+      if (dto.roleType === 'MERCHANT') {
+        throw new UnauthorizedException(
+          '您的商家角色已创建，但需要管理员审核后才能使用，请联系管理员',
+        );
+      }
+
+      // 重新获取用户信息（包含新创建的角色）
+      user = await this.userService.findUserById(user.id);
+      if (!user) {
+        throw new UnauthorizedException('用户信息获取失败');
+      }
+    } else {
+      // 检查角色状态
+      if (roleCheck.roleStatus === 'INACTIVE') {
+        if (dto.roleType === 'MERCHANT') {
+          throw new UnauthorizedException('您的商家账号待审核，请联系管理员');
+        } else {
+          throw new UnauthorizedException('您的账号已被禁用，请联系管理员');
+        }
+      }
+
+      if (roleCheck.roleStatus === 'SUSPENDED') {
+        throw new UnauthorizedException('您的账号已被暂停，请联系管理员');
+      }
+    }
+
     // 更新登录时间
     await this.userService.updateLastLoginTime(user.id);
 
+    // 过滤用户角色，只返回当前登录的角色信息
+    const filteredUser = {
+      ...user,
+      roles: user.roles.filter((role) => role.roleType === dto.roleType),
+    };
+
     this.logger.log(
-      `用户登录成功: userId=${user.id}, 角色数量=${user.roles.length}`,
+      `用户登录成功: userId=${user.id}, 角色: ${ROLE_TYPE_CHINESE[dto.roleType]}`,
     );
 
-    return this.generateTokens(user);
+    return this.generateTokens(filteredUser);
   }
 
   /**

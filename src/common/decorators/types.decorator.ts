@@ -1,7 +1,7 @@
 // src/common/decorators/types.decorator.ts
 import { applyDecorators, Type } from '@nestjs/common';
 import { ApiExtraModels, ApiOkResponse, getSchemaPath } from '@nestjs/swagger';
-import { ApiResponseDto, PaginatedResponseDto } from '../../types';
+import { ApiResponseDto, PaginationResponseDto } from '../../types';
 
 /**
  * API响应装饰器
@@ -37,15 +37,15 @@ export const ApiPaginatedResponseType = <TModel extends Type<unknown>>(
   description?: string,
 ) =>
   applyDecorators(
-    ApiExtraModels(PaginatedResponseDto, model),
+    ApiExtraModels(PaginationResponseDto, model),
     ApiOkResponse({
       description: description ?? 'Paginated Success',
       schema: {
         allOf: [
-          { $ref: getSchemaPath(PaginatedResponseDto) },
+          { $ref: getSchemaPath(PaginationResponseDto) },
           {
             properties: {
-              data: {
+              list: {
                 type: 'array',
                 items: { $ref: getSchemaPath(model) },
               },

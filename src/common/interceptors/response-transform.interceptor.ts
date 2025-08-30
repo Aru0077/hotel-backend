@@ -10,11 +10,9 @@ import { map } from 'rxjs/operators';
 import { Response } from 'express';
 
 export interface ApiResponse<T = unknown> {
-  success: boolean;
-  statusCode: number;
+  code: number;
   message: string;
   data: T;
-  timestamp: string;
 }
 
 @Injectable()
@@ -30,11 +28,9 @@ export class ResponseTransformInterceptor<T = unknown>
 
     return next.handle().pipe(
       map((data: T) => ({
-        success: statusCode < 400,
-        statusCode,
+        code: statusCode,
         message: '操作成功',
         data,
-        timestamp: new Date().toISOString(),
       })),
     );
   }

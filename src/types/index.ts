@@ -41,9 +41,9 @@ export {
 // API类型导出
 export {
   ApiResponse,
-  PaginatedResponse,
+  PaginationResponse,
   ApiResponseDto,
-  PaginatedResponseDto,
+  PaginationResponseDto,
   PaginationParams,
   BaseEntity,
 } from './api.types';

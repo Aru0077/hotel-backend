@@ -11,11 +11,10 @@ import { Request, Response } from 'express';
 import { AppConfigService } from '../../config/config.service';
 
 interface ErrorResponse {
-  success: boolean;
-  statusCode: number;
+  code: number;
   message: string;
-  timestamp: string;
-  path: string;
+  data: null;
+  path?: string;
 }
 
 interface HttpExceptionResponse {
@@ -38,14 +37,13 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     const errorResponse = this.buildErrorResponse(exception, request);
 
     this.logError(request, errorResponse, exception);
-    response.status(errorResponse.statusCode).json(errorResponse);
+    response.status(errorResponse.code).json(errorResponse);
   }
 
   private buildErrorResponse(
     exception: unknown,
     request: Request,
   ): ErrorResponse {
-    const timestamp = new Date().toISOString();
     const path = request.url;
 
     // HttpException优先处理
@@ -54,10 +52,9 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       const message = this.extractHttpExceptionMessage(exception);
 
       return {
-        success: false,
-        statusCode: status,
+        code: status,
         message,
-        timestamp,
+        data: null,
         path,
       };
     }
@@ -68,10 +65,9 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       : this.extractErrorMessage(exception);
 
     return {
-      success: false,
-      statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
+      code: HttpStatus.INTERNAL_SERVER_ERROR,
       message,
-      timestamp,
+      data: null,
       path,
     };
   }
@@ -109,11 +105,11 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     exception: unknown,
   ): void {
     const { method, url } = request;
-    const { statusCode, message } = errorResponse;
+    const { code, message } = errorResponse;
 
-    const logMessage = `${method} ${url} - ${statusCode} - ${message}`;
+    const logMessage = `${method} ${url} - ${code} - ${message}`;
 
-    if (statusCode >= 500) {
+    if (code >= 500) {
       this.logger.error(
         logMessage,
         exception instanceof Error ? exception.stack : undefined,
